@@ -1,0 +1,23 @@
+[package]
+name = "privatepoker-common"
+version = "0.1.0"
+edition = "2021"
+description = "PrivatePoker Common"
+
+[dependencies]
+alloy-primitives = { workspace = true }
+alloy-sol-types = { workspace = true }
+stylus-sdk = { workspace = true }
+
+[dev-dependencies]
+alloy-primitives = { workspace = true, features = ["sha3-keccak"] }
+stylus-sdk = { workspace = true, features = ["stylus-test"] }
+
+[features]
+default = []
+debug = ["stylus-sdk/debug"]
+test = ["stylus-sdk/stylus-test"]
+export-abi = ["stylus-sdk/export-abi"]
+
+[lib]
+crate-type = ["lib", "cdylib"]

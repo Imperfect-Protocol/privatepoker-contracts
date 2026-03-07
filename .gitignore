@@ -1,0 +1,11 @@
+/target
+.env
+.DS_Store
+/docs/.*
+/docs/*.aux
+/docs/*.fdb_latexmk
+/docs/*.fls
+/docs/*.log
+/docs/*.out
+/docs/*.synctex.gz
+/docs/*.toc
