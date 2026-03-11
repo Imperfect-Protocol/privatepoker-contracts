@@ -1,30 +1,42 @@
 use alloc::{vec, vec::Vec};
 
-use alloy_primitives::{uint, U32};
+use alloy_primitives::{uint, Address, U32};
 use alloy_sol_types::sol;
 use stylus_sdk::{
     alloy_primitives::U256,
     keccak_const,
     prelude::*,
-    storage::{StorageAddress, StorageBool, StorageMap, StorageString, StorageU256, StorageVec},
+    storage::{StorageAddress, StorageBytes, StorageMap, StorageString, StorageU256, StorageVec},
 };
+
+#[storage]
+pub struct TablePlayer {
+    pub address: StorageAddress,
+    pub chips_remain: StorageU256,
+}
 
 #[storage]
 pub struct Table {
     pub owner: StorageAddress,
     pub id: StorageU256,
+    pub flags: StorageU256,
     pub name: StorageString,
     pub buy_in: StorageU256,
-    pub is_active: StorageBool,
-    pub annonce_public_key: StorageString,
+    pub annonce_public_key: StorageBytes,
+    pub players: StorageVec<TablePlayer>,
+    pub total_buyin: StorageU256,
 }
 
 #[storage]
 pub struct Lobby {
     pub id: StorageU256,
+    pub game_type: StorageU256,
+    pub flags: StorageU256,
     pub name: StorageString,
     pub table_ids: StorageVec<StorageU256>,
     pub tables: StorageMap<U256, Table>,
+    pub total_volume: StorageU256,
+    pub total_players: StorageU256,
 }
 
 #[storage]
@@ -32,24 +44,43 @@ pub struct MainLobby {
     pub owner: StorageAddress,
     pub lobby_ids: StorageVec<StorageU256>,
     pub lobbies: StorageMap<U256, Lobby>,
+    pub player_tables: StorageMap<Address, StorageVec<StorageU256>>,
 }
 
 sol! {
     struct LobbyInfo {
         uint256 lobby_id;
+        uint256 lobby_game_type;
+        uint256 lobby_flags;
+        uint256 lobby_table_count;
+        uint256 lobby_player_count;
+        uint256 lobby_total_volume;
         string lobby_name;
-        uint256 table_count;
     }
 
     struct TableInfo {
         uint256 table_id;
-        string table_name;
+        uint256 table_flags;
         uint256 table_buyin;
+        uint256 table_player_count;
+        uint256 table_total_buyin;
+        string table_name;
+    }
+
+    struct TablePlayerInfo {
+        address player_address;
+        uint256 player_chips;
+    }
+
+    struct TableDetail {
+        TableInfo info;
+        TablePlayerInfo[] players;
     }
 
     event HandshakeSignal(address sender, uint256 lobby_id, uint256 table_id, address recipient, bytes encrypted_data);
     event LobbyCreated(uint256 id, string name);
-    event TableCreated(uint256 id, string name, uint256 buy_in);
+    event TableCreated(uint256 id, uint256 lobby_id, string name, uint256 buy_in);
+    event PlayerJoined(address player_address, uint256 lobby_id, uint256 table_id, string player_name, uint256 player_chips);
 }
 
 use super::storage::StorageSlot;

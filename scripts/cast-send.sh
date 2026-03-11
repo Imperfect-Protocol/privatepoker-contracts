@@ -9,8 +9,10 @@ cast_send() {
     fi
 
     CAST_ARGS=(--rpc-url $RPC_URL $1 "$2" "${@:3}")
+
+    echo "cast send --private-key \$PP_PRIVATE_KEY" "${CAST_ARGS[@]}"
     
     cast send --private-key $PP_PRIVATE_KEY "${CAST_ARGS[@]}"
 }
 
-cast_send $@
+cast_send "$@"

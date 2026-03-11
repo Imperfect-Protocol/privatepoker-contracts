@@ -13,5 +13,5 @@ cast_call() {
     cast call --private-key $PP_PRIVATE_KEY "${CAST_ARGS[@]}"
 }
 
-cast_call $@
+cast_call "$@"
 
