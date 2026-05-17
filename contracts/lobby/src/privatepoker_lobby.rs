@@ -3,9 +3,16 @@ use alloc::{string::String, vec::Vec};
 use alloy_primitives::Address;
 use alloy_sol_types::SolValue;
 use privatepoker_common::lobby::{
-    LobbyCreated, LobbyInfo, MainLobby, TableCreated, TableDetail, TableInfo, TablePlayerInfo,
+    ChipTokenSet, HandStarted, LobbyCreated, LobbyInfo, MainLobby, TableCreated, TableDetail,
+    TableInfo, TablePlayerInfo,
 };
 use stylus_sdk::{abi::Bytes, alloy_primitives::U256, prelude::*, stylus_core};
+
+sol_interface! {
+    interface IPokerChips {
+        function transferFrom(address from, address to, uint256 amount) external returns (bool);
+    }
+}
 
 #[storage]
 #[entrypoint]
@@ -21,6 +28,18 @@ impl PrivatePokerLobby {
     }
 
     // --- ADMIN ACTIONS ---
+
+    pub fn set_chip_token(&mut self, chip_token: Address) -> Result<(), Vec<u8>> {
+        let mut main_lobby = MainLobby::storage_slot();
+        let sender = self.vm().msg_sender();
+        if main_lobby.owner.get() != sender {
+            return Err("NOT_ADMIN".into());
+        }
+
+        main_lobby.chip_token.set(chip_token);
+        stylus_core::log(self.vm(), ChipTokenSet { chip_token });
+        Ok(())
+    }
 
     pub fn add_lobby(
         &mut self,
@@ -58,6 +77,8 @@ impl PrivatePokerLobby {
         buy_in: U256,
         annonce_public_key: Bytes,
     ) -> Result<(), Vec<u8>> {
+        self.collect_chip_buy_in(lobby_id, table_id, buy_in, false)?;
+
         let mut main_lobby = MainLobby::storage_slot();
         let sender = self.vm().msg_sender();
         let mut lobby = main_lobby.lobbies.setter(lobby_id);
@@ -72,6 +93,7 @@ impl PrivatePokerLobby {
         table.flags.set(U256::ZERO);
         table.name.set_str(name.clone());
         table.buy_in.set(buy_in);
+        table.total_buyin.set(buy_in);
 
         let mut new_player = table.players.grow();
         new_player.address.set(sender);
@@ -107,6 +129,9 @@ impl PrivatePokerLobby {
         table_id: U256,
         annonce_public_key: Bytes,
     ) -> Result<(), Vec<u8>> {
+        let buy_in = self.get_join_buy_in(lobby_id, table_id)?;
+        self.collect_chip_buy_in(lobby_id, table_id, buy_in, true)?;
+
         let mut main_lobby = MainLobby::storage_slot();
         let sender = self.vm().msg_sender();
 
@@ -129,7 +154,6 @@ impl PrivatePokerLobby {
         }
 
         // 2. Seat the player and give them their chips
-        let buy_in = table.buy_in.get();
         let mut new_player = table.players.grow();
         new_player.address.set(sender);
         new_player.chips_remain.set(buy_in);
@@ -152,6 +176,80 @@ impl PrivatePokerLobby {
         Ok(())
     }
 
+    pub fn start_hand(&mut self, lobby_id: U256, table_id: U256) -> Result<(), Vec<u8>> {
+        let mut main_lobby = MainLobby::storage_slot();
+        let sender = self.vm().msg_sender();
+
+        let mut lobby = main_lobby.lobbies.setter(lobby_id);
+        if lobby.id.get() != lobby_id {
+            return Err(b"LOBBY_NOT_FOUND")?;
+        }
+
+        let mut table = lobby.tables.setter(table_id);
+        if table.id.get() != table_id {
+            return Err(b"TABLE_NOT_FOUND")?;
+        }
+
+        let num_players = table.players.len();
+        if num_players == 0 {
+            return Err(b"NO_PLAYERS")?;
+        }
+
+        let mut sender_is_seated = false;
+        let first_player = table
+            .players
+            .get(0)
+            .ok_or_else(|| b"INVALID_PLAYER_INDEX")?
+            .address
+            .get();
+
+        for index in 0..num_players {
+            let player = table
+                .players
+                .get(index)
+                .ok_or_else(|| b"INVALID_PLAYER_INDEX")?;
+            if player.address.get() == sender {
+                sender_is_seated = true;
+                break;
+            }
+        }
+        if !sender_is_seated {
+            return Err(b"SENDER_NOT_SEATED")?;
+        }
+
+        let ready_marker = table.current_hand.get() + U256::ONE;
+        if table.hand_start_ready.get(sender) == ready_marker {
+            return Err(b"ALREADY_READY")?;
+        }
+
+        table.hand_start_ready.insert(sender, ready_marker);
+
+        let ready_count = table.hand_start_ready_count.get() + U256::ONE;
+        if ready_count < U256::from(num_players) {
+            table.hand_start_ready_count.set(ready_count);
+            return Ok(());
+        }
+
+        table.hand_start_ready_count.set(U256::ZERO);
+        table.current_hand.set(ready_marker);
+
+        let small_blind = small_blind_for_buy_in(table.buy_in.get());
+        let big_blind = small_blind * U256::from(2);
+
+        stylus_core::log(
+            self.vm(),
+            HandStarted {
+                lobby_id,
+                table_id,
+                next_player: first_player,
+                small_blind,
+                big_blind,
+            },
+        );
+
+        Ok(())
+    }
+
     // --- VIEW ACTIONS (For the UI) ---
 
     pub fn get_lobby_count(&self) -> U256 {
@@ -165,29 +263,7 @@ impl PrivatePokerLobby {
             return Err(b"INDEX_OUT_OF_RANGE")?;
         };
 
-        let lobby = main_lobby.lobbies.getter(lobby_id);
-        if lobby.id.get() != lobby_id {
-            return Err(b"INVALID_LOBBY")?;
-        }
-
-        let lobby_name = lobby.name.get_string();
-        let lobby_game_type = U256::from(lobby.game_type.get());
-        let lobby_flags = U256::from(lobby.flags.get());
-        let lobby_table_count = U256::from(lobby.table_ids.len());
-        let lobby_player_count = U256::from(lobby.total_players.get());
-        let lobby_total_volume = U256::from(lobby.total_volume.get());
-
-        Ok(LobbyInfo {
-            lobby_id,
-            lobby_game_type,
-            lobby_flags,
-            lobby_table_count,
-            lobby_player_count,
-            lobby_total_volume,
-            lobby_name,
-        }
-        .abi_encode()
-        .into())
+        self.get_lobby_by_id(lobby_id)
     }
 
     pub fn get_table_count(&self, lobby_id: U256) -> Result<U256, Vec<u8>> {
@@ -309,6 +385,7 @@ impl PrivatePokerLobby {
             players.push(TablePlayerInfo {
                 player_address: player.address.get(),
                 player_chips: player.chips_remain.get(),
+                player_annonce_public_key: player.annonce_public_key.get_bytes().to_vec().into(),
             });
         }
 
@@ -353,7 +430,6 @@ impl PrivatePokerLobby {
             return Err("NOT_ADMIN".into());
         }
 
-        // 1. Remove from the ID tracker (Swap and Pop)
         let mut found = false;
         let len = main_lobby.lobby_ids.len();
         for i in 0..len {
@@ -372,29 +448,20 @@ impl PrivatePokerLobby {
             return Err("LOBBY_NOT_FOUND".into());
         }
 
-        // 2. Clear the storage map entry
-        // In Stylus, we "clear" by overwriting with default/zero values
         let mut lobby = main_lobby.lobbies.setter(id);
-        lobby.id.erase();
-        lobby.name.erase();
-
-        // Remove all tables in the lobby
-        // Note: this can cause DOS if list is long!
         let len = lobby.table_ids.len();
         for i in 0..len {
             let table_id = lobby.table_ids.get(i).unwrap();
             let mut table = lobby.tables.setter(table_id);
-            table.owner.erase();
-            table.id.erase();
-            table.flags.erase();
-            table.name.erase();
-            table.buy_in.erase();
-            unsafe {
-                table.players.set_len(0);
-            }
-            table.total_buyin.erase();
+            clear_table(&mut table);
         }
 
+        lobby.id.erase();
+        lobby.game_type.erase();
+        lobby.flags.erase();
+        lobby.name.erase();
+        lobby.total_volume.erase();
+        lobby.total_players.erase();
         lobby.table_ids.erase();
 
         Ok(())
@@ -405,13 +472,15 @@ impl PrivatePokerLobby {
         let mut main_lobby = MainLobby::storage_slot();
         let sender = self.vm().msg_sender();
         let mut lobby = main_lobby.lobbies.setter(lobby_id);
-        let table = lobby.tables.getter(table_id);
+        if lobby.id.get() != lobby_id {
+            return Err("LOBBY_NOT_FOUND".into());
+        }
 
+        let table = lobby.tables.getter(table_id);
         if table.owner.get() != sender && main_lobby.owner.get() != sender {
             return Err("UNAUTHORIZED".into());
         }
 
-        // 1. Remove from lobby's table_ids (Swap and Pop)
         let mut found = false;
         let len = lobby.table_ids.len();
         for i in 0..len {
@@ -430,17 +499,99 @@ impl PrivatePokerLobby {
             return Err("TABLE_NOT_FOUND".into());
         }
 
-        // 2. Clear the table data
         let mut table = lobby.tables.setter(table_id);
-        table.owner.erase();
-        table.id.erase();
-        table.flags.erase();
-        table.name.erase();
-        table.buy_in.erase();
-        unsafe {
-            table.players.set_len(0);
+        clear_table(&mut table);
+
+        Ok(())
+    }
+}
+
+fn small_blind_for_buy_in(buy_in: U256) -> U256 {
+    let hundred = U256::from(100);
+    let blind = buy_in / hundred;
+    if blind == U256::ZERO && buy_in > U256::ZERO {
+        U256::ONE
+    } else {
+        blind
+    }
+}
+
+fn clear_table(table: &mut privatepoker_common::lobby::Table) {
+    table.owner.erase();
+    table.id.erase();
+    table.flags.erase();
+    table.name.erase();
+    table.buy_in.erase();
+    table.total_buyin.erase();
+    table.current_hand.erase();
+    table.hand_start_ready_count.erase();
+    unsafe {
+        table.players.set_len(0);
+    }
+}
+
+impl PrivatePokerLobby {
+    fn get_join_buy_in(&self, lobby_id: U256, table_id: U256) -> Result<U256, Vec<u8>> {
+        let main_lobby = MainLobby::storage_slot();
+        let lobby = main_lobby.lobbies.getter(lobby_id);
+        if lobby.id.get() == U256::ZERO {
+            return Err("LOBBY_NOT_FOUND".into());
         }
-        table.total_buyin.erase();
+
+        let table = lobby.tables.getter(table_id);
+        if table.id.get() != table_id {
+            return Err("TABLE_NOT_FOUND".into());
+        }
+
+        Ok(table.buy_in.get())
+    }
+
+    fn collect_chip_buy_in(
+        &mut self,
+        lobby_id: U256,
+        table_id: U256,
+        buy_in: U256,
+        table_must_exist: bool,
+    ) -> Result<(), Vec<u8>> {
+        if buy_in == U256::ZERO {
+            return Ok(());
+        }
+
+        let main_lobby = MainLobby::storage_slot();
+        let sender = self.vm().msg_sender();
+        let lobby = main_lobby.lobbies.getter(lobby_id);
+        if lobby.id.get() == U256::ZERO {
+            return Err("LOBBY_NOT_FOUND".into());
+        }
+
+        let table = lobby.tables.getter(table_id);
+        if table_must_exist {
+            if table.id.get() != table_id {
+                return Err("TABLE_NOT_FOUND".into());
+            }
+
+            let num_players = table.players.len();
+            for i in 0..num_players {
+                if table.players.get(i).unwrap().address.get() == sender {
+                    return Err("ALREADY_SEATED".into());
+                }
+            }
+        } else if table.id.get() == table_id {
+            return Err("TABLE_ALREADY_EXISTS".into());
+        }
+
+        let chip_token = main_lobby.chip_token.get();
+        if chip_token == Address::ZERO {
+            return Err(b"CHIP_TOKEN_NOT_SET")?;
+        }
+
+        let lobby_address = self.vm().contract_address();
+        let transferred = IPokerChips::new(chip_token)
+            .transfer_from(&mut *self, sender, lobby_address, buy_in)
+            .map_err(|_| b"CHIP_TRANSFER_FROM_FAILED".to_vec())?;
+        if !transferred {
+            return Err(b"CHIP_TRANSFER_FROM_REJECTED")?;
+        }
 
         Ok(())
     }

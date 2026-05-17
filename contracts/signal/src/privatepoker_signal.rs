@@ -31,13 +31,38 @@ impl PrivatePokerSignal {
         if table.id.get() != table_id {
             return Err(b"INVALID_TABLE")?;
         }
-        for i in 0..recipients.len() {
-            let receipient = recipients[i];
+
+        if recipients.len() != encrypted_data.len() {
+            return Err(b"SIGNAL_LENGTH_MISMATCH")?;
+        }
+
+        let mut sender_is_seated = false;
+        let player_count = table.players.len();
+        for i in 0..player_count {
             let player = table.players.get(i).ok_or_else(|| b"INVALID_PLAYER")?;
-            if receipient != player.address.get() {
-                Err(b"INVALID_RECEIPIENT")?;
+            if sender == player.address.get() {
+                sender_is_seated = true;
+                break;
             }
         }
+        if !sender_is_seated {
+            return Err(b"SENDER_NOT_SEATED")?;
+        }
+
+        for recipient in recipients.iter() {
+            let mut recipient_is_seated = false;
+            for i in 0..player_count {
+                let player = table.players.get(i).ok_or_else(|| b"INVALID_PLAYER")?;
+                if *recipient == player.address.get() {
+                    recipient_is_seated = true;
+                    break;
+                }
+            }
+            if !recipient_is_seated {
+                return Err(b"INVALID_RECIPIENT")?;
+            }
+        }
+
         stylus_core::log(
             self.vm(),
             HandshakeSignal {

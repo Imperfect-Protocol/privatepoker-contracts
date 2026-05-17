@@ -25,6 +25,9 @@ pub struct Table {
     pub buy_in: StorageU256,
     pub players: StorageVec<TablePlayer>,
     pub total_buyin: StorageU256,
+    pub current_hand: StorageU256,
+    pub hand_start_ready_count: StorageU256,
+    pub hand_start_ready: StorageMap<Address, StorageU256>,
 }
 
 #[storage]
@@ -45,6 +48,7 @@ pub struct MainLobby {
     pub lobby_ids: StorageVec<StorageU256>,
     pub lobbies: StorageMap<U256, Lobby>,
     pub player_tables: StorageMap<Address, StorageVec<StorageU256>>,
+    pub chip_token: StorageAddress,
 }
 
 sol! {
@@ -70,6 +74,7 @@ sol! {
     struct TablePlayerInfo {
         address player_address;
         uint256 player_chips;
+        bytes player_annonce_public_key;
     }
 
     struct TableDetail {
@@ -78,6 +83,9 @@ sol! {
     }
 
     event HandshakeSignal(address sender, uint256 lobby_id, uint256 table_id, address[] recipients, bytes[] encrypted_data);
+    event HandStarted(uint256 lobby_id, uint256 table_id, address next_player, uint256 small_blind, uint256 big_blind);
+    event ChipTokenSet(address chip_token);
+    event ChipsPaidOut(address recipient, uint256 amount);
     event LobbyCreated(uint256 id, string name);
     event TableCreated(uint256 id, uint256 lobby_id, string name, uint256 buy_in);
     event PlayerJoined(address player_address, uint256 lobby_id, uint256 table_id, string player_name, uint256 player_chips);

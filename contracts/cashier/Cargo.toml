@@ -1,0 +1,23 @@
+[package]
+name = "cashier"
+version = "0.1.0"
+edition = "2021"
+description = "Private Poker USDC to Chips cashier"
+
+[dependencies]
+alloy-primitives = { workspace = true }
+alloy-sol-types = { workspace = true }
+privatepoker-common = { workspace = true }
+stylus-sdk = { workspace = true }
+
+[features]
+default = ["mini-alloc"]
+export-abi = ["stylus-sdk/export-abi", "privatepoker-common/export-abi"]
+mini-alloc = ["stylus-sdk/mini-alloc"]
+
+[[bin]]
+name = "cashier"
+path = "src/main.rs"
+
+[lib]
+crate-type = ["lib", "cdylib"]
