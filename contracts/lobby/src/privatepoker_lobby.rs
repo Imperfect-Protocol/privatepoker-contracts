@@ -72,11 +72,11 @@ impl PrivatePokerLobby {
         table.flags.set(U256::ZERO);
         table.name.set_str(name.clone());
         table.buy_in.set(buy_in);
-        table.annonce_public_key.set_bytes(annonce_public_key);
 
         let mut new_player = table.players.grow();
         new_player.address.set(sender);
         new_player.chips_remain.set(buy_in);
+        new_player.annonce_public_key.set_bytes(annonce_public_key);
 
         lobby.table_ids.push(table_id);
 
@@ -98,6 +98,57 @@ impl PrivatePokerLobby {
                 buy_in,
             },
         );
+        Ok(())
+    }
+
+    pub fn join_table(
+        &mut self,
+        lobby_id: U256,
+        table_id: U256,
+        annonce_public_key: Bytes,
+    ) -> Result<(), Vec<u8>> {
+        let mut main_lobby = MainLobby::storage_slot();
+        let sender = self.vm().msg_sender();
+
+        let mut lobby = main_lobby.lobbies.setter(lobby_id);
+        if lobby.id.get() == U256::ZERO {
+            return Err("LOBBY_NOT_FOUND".into());
+        }
+
+        let mut table = lobby.tables.setter(table_id);
+        if table.id.get() != table_id {
+            return Err("TABLE_NOT_FOUND".into());
+        }
+
+        // 1. Prevent double-seating
+        let num_players = table.players.len();
+        for i in 0..num_players {
+            if table.players.get(i).unwrap().address.get() == sender {
+                return Err("ALREADY_SEATED".into());
+            }
+        }
+
+        // 2. Seat the player and give them their chips
+        let buy_in = table.buy_in.get();
+        let mut new_player = table.players.grow();
+        new_player.address.set(sender);
+        new_player.chips_remain.set(buy_in);
+        new_player.annonce_public_key.set_bytes(annonce_public_key);
+
+        // 3. Update the global accounting
+        let current_total_buyin = table.total_buyin.get();
+        table.total_buyin.set(current_total_buyin + buy_in);
+
+        let lobby_volume = lobby.total_volume.get();
+        lobby.total_volume.set(lobby_volume + buy_in);
+
+        let total_players = lobby.total_players.get();
+        lobby.total_players.set(total_players + U256::ONE);
+
+        // 4. Add table to player's active tables index
+        let mut player_tables = main_lobby.player_tables.setter(sender);
+        player_tables.grow().set(table_id);
+
         Ok(())
     }
 
@@ -338,7 +389,6 @@ impl PrivatePokerLobby {
             table.flags.erase();
             table.name.erase();
             table.buy_in.erase();
-            table.annonce_public_key.erase();
             unsafe {
                 table.players.set_len(0);
             }
@@ -387,7 +437,6 @@ impl PrivatePokerLobby {
         table.flags.erase();
         table.name.erase();
         table.buy_in.erase();
-        table.annonce_public_key.erase();
         unsafe {
             table.players.set_len(0);
         }

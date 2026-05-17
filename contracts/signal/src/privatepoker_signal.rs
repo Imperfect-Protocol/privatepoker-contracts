@@ -18,8 +18,8 @@ impl PrivatePokerSignal {
         &mut self,
         lobby_id: U256,
         table_id: U256,
-        recipient: Address,
-        encrypted_data: Bytes,
+        recipients: Vec<Address>,
+        encrypted_data: Vec<Bytes>,
     ) -> Result<(), Vec<u8>> {
         let main_lobby = MainLobby::storage_slot();
         let sender = self.vm().msg_sender();
@@ -28,8 +28,15 @@ impl PrivatePokerSignal {
             return Err(b"INVALID_LOBBY")?;
         }
         let table = lobby.tables.get(table_id);
-        if table.owner.get() != recipient {
-            return Err(b"INVALID_RECEIPIENT")?;
+        if table.id.get() != table_id {
+            return Err(b"INVALID_TABLE")?;
+        }
+        for i in 0..recipients.len() {
+            let receipient = recipients[i];
+            let player = table.players.get(i).ok_or_else(|| b"INVALID_PLAYER")?;
+            if receipient != player.address.get() {
+                Err(b"INVALID_RECEIPIENT")?;
+            }
         }
         stylus_core::log(
             self.vm(),
@@ -37,8 +44,11 @@ impl PrivatePokerSignal {
                 sender,
                 lobby_id,
                 table_id,
-                recipient,
-                encrypted_data: encrypted_data.to_vec().into(),
+                recipients,
+                encrypted_data: encrypted_data
+                    .into_iter()
+                    .map(|v| v.to_vec().into())
+                    .collect(),
             },
         );
         Ok(())

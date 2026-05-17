@@ -13,6 +13,7 @@ use stylus_sdk::{
 pub struct TablePlayer {
     pub address: StorageAddress,
     pub chips_remain: StorageU256,
+    pub annonce_public_key: StorageBytes,
 }
 
 #[storage]
@@ -22,7 +23,6 @@ pub struct Table {
     pub flags: StorageU256,
     pub name: StorageString,
     pub buy_in: StorageU256,
-    pub annonce_public_key: StorageBytes,
     pub players: StorageVec<TablePlayer>,
     pub total_buyin: StorageU256,
 }
@@ -77,7 +77,7 @@ sol! {
         TablePlayerInfo[] players;
     }
 
-    event HandshakeSignal(address sender, uint256 lobby_id, uint256 table_id, address recipient, bytes encrypted_data);
+    event HandshakeSignal(address sender, uint256 lobby_id, uint256 table_id, address[] recipients, bytes[] encrypted_data);
     event LobbyCreated(uint256 id, string name);
     event TableCreated(uint256 id, uint256 lobby_id, string name, uint256 buy_in);
     event PlayerJoined(address player_address, uint256 lobby_id, uint256 table_id, string player_name, uint256 player_chips);
