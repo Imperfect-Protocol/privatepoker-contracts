@@ -15,15 +15,12 @@ impl StorageSlot {
     /// * `slot` - The slot to get the address from.
     #[must_use]
     pub fn get_slot<ST: StorageType>(slot: impl Into<U256>) -> ST {
-        #[cfg(all(
-            not(any(target_arch = "wasm32", feature = "export-abi")),
-            feature = "test"
-        ))]
+        #[cfg(not(any(target_arch = "wasm32", feature = "export-abi")))]
         let host = VM {
             host: alloc::boxed::Box::new(stylus_sdk::host::WasmVM {}),
         };
 
-        #[cfg(any(target_arch = "wasm32", feature = "export-abi", not(feature = "test")))]
+        #[cfg(any(target_arch = "wasm32", feature = "export-abi"))]
         let host = VM(stylus_sdk::host::WasmVM {});
 
         #[allow(clippy::cast_possible_truncation)]
