@@ -126,7 +126,7 @@ PP_FORCE_PRIVATEPOKER_DEPLOY=1 ./scripts/deploy-privatepoker.sh
 After deploying core contracts, create lobby `1`:
 
 ```sh
-./scripts/cast-send.sh "$PP_LOBBY" 'addLobby(uint256,uint256,uint256,string)' 1 1 0 "Texas Holdem"
+./scripts/cast-send.sh "$PP_LOBBY" 'addLobby(uint256,uint256,uint256,string)' 1 1 1 "Texas Holdem"
 ```
 
 ## Fund Test Accounts
@@ -143,6 +143,7 @@ Mint TEST_USDC to one address:
 
 ```sh
 ./scripts/fund-test-usdc.sh 100000 0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266
+PP_PRIVATE_KEY=0x ./scripts/deposit-test-usdc.sh 50000
 ```
 
 If the Nitro DevNode accounts do not already have ETH, fund the first three player accounts from the funded dev owner key:
@@ -163,7 +164,7 @@ cd /privatepoker-contracts
 ./scripts/check-all-contracts.sh
 ./scripts/deploy-privatepoker-test-usdc.sh
 ./scripts/deploy-privatepoker.sh
-./scripts/cast-send.sh "$PP_LOBBY" 'addLobby(uint256,uint256,uint256,string)' 1 1 0 "Texas Holdem"
+./scripts/cast-send.sh "$PP_LOBBY" 'addLobby(uint256,uint256,uint256,string)' 1 1 1 "Texas Holdem"
 ./scripts/fund-test-usdc-to-test-accounts.sh 100000
 ```
 
