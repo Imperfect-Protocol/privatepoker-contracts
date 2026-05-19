@@ -4,6 +4,6 @@
 #[macro_use]
 extern crate alloc;
 
-pub mod privatepoker_verify_unmasking;
+pub mod privatepoker_table;
 
-pub use privatepoker_verify_unmasking::*;
+pub use privatepoker_table::*;

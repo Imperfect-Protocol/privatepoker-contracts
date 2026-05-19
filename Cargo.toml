@@ -1,8 +1,15 @@
 [workspace]
 resolver = "2"
 members = [
+    "contracts/cashier",
+    "contracts/chips",
+    "contracts/diamond",
+    "contracts/hand",
     "contracts/lobby",
     "contracts/signal",
+    "contracts/spectate",
+    "contracts/table",
+    "contracts/test_usdc",
     "contracts/verify_shuffle",
     "contracts/verify_unmasking",
     "common"

@@ -2,6 +2,6 @@
 set -e
 
 SCRIPTS_DIR="$(cd "$(dirname "$0")" && pwd)"
-. "$SCRIPTS_DIR/privatepoker_vars.sh"
+. "$SCRIPTS_DIR/privatepoker_testvars.sh"
 
-check "$@"
+fund_test_usdc "$@"

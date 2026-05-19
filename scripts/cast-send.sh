@@ -1,18 +1,9 @@
-#!/bin/bash
+#!/bin/sh
+set -e
 
 SCRIPTS_DIR="$(cd "$(dirname "$0")" && pwd)"
-. $SCRIPTS_DIR/set_vars.sh
+. "$SCRIPTS_DIR/privatepoker_vars.sh"
 
-cast_send() {
-    if [ -z "$PP_PRIVATE_KEY" ]; then
-        die "Environment variable undefined: PP_PRIVATE_KEY"
-    fi
-
-    CAST_ARGS=(--rpc-url $RPC_URL $1 "$2" "${@:3}")
-
-    echo "cast send --private-key \$PP_PRIVATE_KEY" "${CAST_ARGS[@]}"
-    
-    cast send --private-key $PP_PRIVATE_KEY "${CAST_ARGS[@]}"
-}
-
-cast_send "$@"
+load_privatepoker_env
+maybe_load_privatepoker_core_env
+contract_send "$@"

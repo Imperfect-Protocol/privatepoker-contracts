@@ -1,0 +1,22 @@
+[package]
+name = "chips"
+version = "0.1.0"
+edition = "2021"
+description = "Private Poker Chips token"
+
+[dependencies]
+alloy-primitives = { workspace = true }
+privatepoker-common = { workspace = true }
+stylus-sdk = { workspace = true }
+
+[features]
+default = ["mini-alloc"]
+export-abi = ["stylus-sdk/export-abi", "privatepoker-common/export-abi"]
+mini-alloc = ["stylus-sdk/mini-alloc"]
+
+[[bin]]
+name = "chips"
+path = "src/main.rs"
+
+[lib]
+crate-type = ["lib", "cdylib"]
