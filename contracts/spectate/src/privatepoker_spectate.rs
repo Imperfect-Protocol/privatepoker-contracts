@@ -121,6 +121,7 @@ impl PrivatePokerSpectate {
 
             players.push(TablePlayerInfo {
                 player_address: player.address.get(),
+                operator: player.operator.get(),
                 player_chips: player.chips_remain.get(),
                 player_annonce_public_key: player.annonce_public_key.get_bytes().to_vec().into(),
             });

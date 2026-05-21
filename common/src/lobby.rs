@@ -14,6 +14,7 @@ pub struct TablePlayer {
     pub address: StorageAddress,
     pub chips_remain: StorageU256,
     pub annonce_public_key: StorageBytes,
+    pub operator: StorageAddress,
 }
 
 #[storage]
@@ -68,8 +69,8 @@ sol! {
     }
 
     interface IPrivatePokerTableFacet {
-        function createTable(uint256 lobby_id, uint256 table_id, string name, uint256 buy_in, uint256 num_players, bytes annonce_public_key) external;
-        function joinTable(uint256 lobby_id, uint256 table_id, bytes annonce_public_key) external;
+        function createTable(uint256 lobby_id, uint256 table_id, string name, uint256 buy_in, uint256 num_players, address player_address, address operator, bytes annonce_public_key) external;
+        function joinTable(uint256 lobby_id, uint256 table_id, address player_address, address operator, bytes annonce_public_key) external;
         function removeTable(uint256 lobby_id, uint256 table_id) external;
     }
 
@@ -112,6 +113,7 @@ sol! {
 
     struct TablePlayerInfo {
         address player_address;
+        address operator;
         uint256 player_chips;
         bytes player_annonce_public_key;
     }
