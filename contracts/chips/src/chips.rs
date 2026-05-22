@@ -1,23 +1,23 @@
 use alloc::{string::String, vec, vec::Vec};
 
 use alloy_primitives::Address;
-use privatepoker_common::erc20;
-use stylus_sdk::{alloy_primitives::U256, prelude::*, storage::StorageAddress, stylus_core};
+use privatepoker_common::{
+    erc20,
+    lobby::{PrivatePokerAccountsStorage, PrivatePokerChipsStorage},
+};
+use stylus_sdk::{alloy_primitives::U256, prelude::*, stylus_core};
 
 #[storage]
 #[entrypoint]
-pub struct Chips {
-    token: erc20::Erc20Storage,
-    cashier: StorageAddress,
-    lobby: StorageAddress,
-}
+pub struct Chips;
 
 #[public]
 impl Chips {
     #[constructor]
     fn constructor(&mut self, initial_owner: Address) -> Result<(), Vec<u8>> {
+        let mut chips = PrivatePokerChipsStorage::storage_slot();
         erc20::init_token(
-            &mut self.token,
+            &mut chips.token,
             initial_owner,
             "Private Poker Chips",
             "CHIPS",
@@ -27,60 +27,86 @@ impl Chips {
     }
 
     pub fn name(&self) -> String {
-        erc20::name(&self.token)
+        let chips = PrivatePokerChipsStorage::storage_slot();
+        erc20::name(&chips.token)
     }
 
     pub fn symbol(&self) -> String {
-        erc20::symbol(&self.token)
+        let chips = PrivatePokerChipsStorage::storage_slot();
+        erc20::symbol(&chips.token)
     }
 
     pub fn decimals(&self) -> u8 {
-        erc20::decimals(&self.token)
+        let chips = PrivatePokerChipsStorage::storage_slot();
+        erc20::decimals(&chips.token)
     }
 
     pub fn owner(&self) -> Address {
-        erc20::owner(&self.token)
+        let chips = PrivatePokerChipsStorage::storage_slot();
+        erc20::owner(&chips.token)
     }
 
     pub fn cashier(&self) -> Address {
-        self.cashier.get()
+        PrivatePokerChipsStorage::storage_slot().cashier.get()
     }
 
     pub fn lobby(&self) -> Address {
-        self.lobby.get()
+        PrivatePokerChipsStorage::storage_slot().lobby.get()
+    }
+
+    pub fn account(&self) -> Address {
+        PrivatePokerChipsStorage::storage_slot().account.get()
     }
 
     pub fn total_supply(&self) -> U256 {
-        erc20::total_supply(&self.token)
+        let chips = PrivatePokerChipsStorage::storage_slot();
+        erc20::total_supply(&chips.token)
     }
 
     pub fn balance_of(&self, account: Address) -> U256 {
-        erc20::balance_of(&self.token, account)
+        let chips = PrivatePokerChipsStorage::storage_slot();
+        erc20::balance_of(&chips.token, account)
     }
 
     pub fn allowance(&self, owner: Address, spender: Address) -> U256 {
-        erc20::allowance(&self.token, owner, spender)
+        let chips = PrivatePokerChipsStorage::storage_slot();
+        erc20::allowance(&chips.token, owner, spender)
     }
 
     pub fn set_cashier(&mut self, cashier: Address) -> Result<(), Vec<u8>> {
         self.only_owner()?;
-        self.cashier.set(cashier);
+        PrivatePokerChipsStorage::storage_slot()
+            .cashier
+            .set(cashier);
         Ok(())
     }
 
     pub fn set_lobby(&mut self, lobby: Address) -> Result<(), Vec<u8>> {
         self.only_owner()?;
-        self.lobby.set(lobby);
+        PrivatePokerChipsStorage::storage_slot().lobby.set(lobby);
+        Ok(())
+    }
+
+    pub fn set_account(&mut self, account: Address) -> Result<(), Vec<u8>> {
+        self.only_owner()?;
+        PrivatePokerChipsStorage::storage_slot()
+            .account
+            .set(account);
         Ok(())
     }
 
     pub fn approve(&mut self, spender: Address, value: U256) -> Result<bool, Vec<u8>> {
         let sender = self.vm().msg_sender();
-        erc20::approve(&mut self.token, sender, spender, value);
+        let owner = self.owner_for_sender(sender);
+        self.require_diamond(spender)?;
+        self.require_sender_is_owner_or_operator(sender, owner)?;
+
+        let mut chips = PrivatePokerChipsStorage::storage_slot();
+        erc20::approve(&mut chips.token, owner, spender, value);
         stylus_core::log(
             self.vm(),
             erc20::Approval {
-                owner: sender,
+                owner,
                 spender,
                 value,
             },
@@ -90,16 +116,12 @@ impl Chips {
 
     pub fn transfer(&mut self, to: Address, value: U256) -> Result<bool, Vec<u8>> {
         let sender = self.vm().msg_sender();
-        self.require_transfer_allowed(sender, sender, to)?;
-        erc20::transfer(&mut self.token, sender, to, value)?;
-        stylus_core::log(
-            self.vm(),
-            erc20::Transfer {
-                from: sender,
-                to,
-                value,
-            },
-        );
+        let from = self.owner_for_sender(sender);
+        self.require_transfer_allowed(sender, from, to)?;
+
+        let mut chips = PrivatePokerChipsStorage::storage_slot();
+        erc20::transfer(&mut chips.token, from, to, value)?;
+        stylus_core::log(self.vm(), erc20::Transfer { from, to, value });
         Ok(true)
     }
 
@@ -111,18 +133,19 @@ impl Chips {
     ) -> Result<bool, Vec<u8>> {
         let spender = self.vm().msg_sender();
         self.require_transfer_allowed(spender, from, to)?;
-        erc20::spend_allowance(&mut self.token, from, spender, value)?;
-        erc20::transfer(&mut self.token, from, to, value)?;
+
+        let mut chips = PrivatePokerChipsStorage::storage_slot();
+        erc20::spend_allowance(&mut chips.token, from, spender, value)?;
+        erc20::transfer(&mut chips.token, from, to, value)?;
         stylus_core::log(self.vm(), erc20::Transfer { from, to, value });
         Ok(true)
     }
 
     pub fn mint(&mut self, to: Address, value: U256) -> Result<bool, Vec<u8>> {
-        let sender = self.vm().msg_sender();
-        if sender != self.cashier.get() && sender != erc20::owner(&self.token) {
-            return Err(b"NOT_MINTER".to_vec());
-        }
-        erc20::mint(&mut self.token, to, value)?;
+        self.require_diamond(self.vm().msg_sender())?;
+
+        let mut chips = PrivatePokerChipsStorage::storage_slot();
+        erc20::mint(&mut chips.token, to, value)?;
         stylus_core::log(
             self.vm(),
             erc20::Transfer {
@@ -135,11 +158,10 @@ impl Chips {
     }
 
     pub fn burn(&mut self, from: Address, value: U256) -> Result<bool, Vec<u8>> {
-        let sender = self.vm().msg_sender();
-        if sender != self.cashier.get() && sender != erc20::owner(&self.token) {
-            return Err(b"NOT_BURNER".to_vec());
-        }
-        erc20::burn(&mut self.token, from, value)?;
+        self.require_diamond(self.vm().msg_sender())?;
+
+        let mut chips = PrivatePokerChipsStorage::storage_slot();
+        erc20::burn(&mut chips.token, from, value)?;
         stylus_core::log(
             self.vm(),
             erc20::Transfer {
@@ -152,10 +174,49 @@ impl Chips {
     }
 
     fn only_owner(&self) -> Result<(), Vec<u8>> {
-        if self.vm().msg_sender() != erc20::owner(&self.token) {
+        let chips = PrivatePokerChipsStorage::storage_slot();
+        if self.vm().msg_sender() != erc20::owner(&chips.token) {
             return Err(b"NOT_OWNER".to_vec());
         }
         Ok(())
+    }
+
+    fn diamond(&self) -> Address {
+        self.vm().contract_address()
+    }
+
+    fn require_diamond(&self, address: Address) -> Result<(), Vec<u8>> {
+        if address != self.diamond() {
+            return Err(b"DIAMOND_ONLY".to_vec());
+        }
+        Ok(())
+    }
+
+    fn owner_for_sender(&self, sender: Address) -> Address {
+        let accounts = PrivatePokerAccountsStorage::storage_slot();
+        let player = accounts.operator_players.get(sender);
+        if player == Address::ZERO {
+            sender
+        } else {
+            player
+        }
+    }
+
+    fn require_sender_is_owner_or_operator(
+        &self,
+        sender: Address,
+        owner: Address,
+    ) -> Result<(), Vec<u8>> {
+        if sender == owner {
+            return Ok(());
+        }
+
+        let accounts = PrivatePokerAccountsStorage::storage_slot();
+        if accounts.operator_players.get(sender) == owner {
+            return Ok(());
+        }
+
+        Err(b"NOT_OWNER_OR_OPERATOR".to_vec())
     }
 
     fn require_transfer_allowed(
@@ -164,15 +225,19 @@ impl Chips {
         from: Address,
         to: Address,
     ) -> Result<(), Vec<u8>> {
-        let lobby = self.lobby.get();
-        if lobby == Address::ZERO {
-            return Err(b"LOBBY_NOT_SET".to_vec());
+        let diamond = self.diamond();
+        let chips = PrivatePokerChipsStorage::storage_slot();
+
+        let owner_to_diamond = spender == from && to == diamond;
+        let operator_to_diamond = self.owner_for_sender(spender) == from && to == diamond;
+        let diamond_pull_buyin = spender == diamond && to == diamond;
+        let diamond_payout = spender == diamond && from == diamond;
+
+        if owner_to_diamond || operator_to_diamond || diamond_pull_buyin || diamond_payout {
+            return Ok(());
         }
 
-        let owner_to_lobby = spender == from && to == lobby;
-        let lobby_pull_buyin = spender == lobby && to == lobby;
-        let lobby_payout = spender == lobby && from == lobby;
-        if owner_to_lobby || lobby_pull_buyin || lobby_payout {
+        if spender == erc20::owner(&chips.token) {
             return Ok(());
         }
 

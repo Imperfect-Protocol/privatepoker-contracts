@@ -1,7 +1,10 @@
 use alloc::{string::String, vec::Vec};
 
 use alloy_primitives::Address;
-use privatepoker_common::lobby::{clear_table, IPokerChips, MainLobby, PlayerJoined, TableCreated};
+use privatepoker_common::{
+    erc20,
+    lobby::{clear_table, MainLobby, PlayerJoined, PrivatePokerChipsStorage, TableCreated},
+};
 use stylus_sdk::{abi::Bytes, alloy_primitives::U256, prelude::*, stylus_core};
 
 #[storage]
@@ -28,7 +31,7 @@ impl PrivatePokerTable {
         if sender != player_address && sender != operator {
             return Err(b"INVALID_PLAYER_OPERATOR")?;
         }
-        self.collect_chip_buy_in(lobby_id, table_id, buy_in, false)?;
+        self.collect_chip_buy_in(lobby_id, table_id, player_address, buy_in, false)?;
 
         let mut main_lobby = MainLobby::storage_slot();
         let mut lobby = main_lobby.lobbies.setter(lobby_id);
@@ -97,7 +100,7 @@ impl PrivatePokerTable {
             return Err(b"INVALID_PLAYER_OPERATOR")?;
         }
         let buy_in = self.get_join_buy_in(lobby_id, table_id)?;
-        self.collect_chip_buy_in(lobby_id, table_id, buy_in, true)?;
+        self.collect_chip_buy_in(lobby_id, table_id, player_address, buy_in, true)?;
 
         let mut main_lobby = MainLobby::storage_slot();
 
@@ -212,6 +215,7 @@ impl PrivatePokerTable {
         &mut self,
         lobby_id: U256,
         table_id: U256,
+        player_address: Address,
         buy_in: U256,
         table_must_exist: bool,
     ) -> Result<(), Vec<u8>> {
@@ -220,7 +224,6 @@ impl PrivatePokerTable {
         }
 
         let main_lobby = MainLobby::storage_slot();
-        let sender = self.vm().msg_sender();
         let lobby = main_lobby.lobbies.getter(lobby_id);
         if lobby.id.get() == U256::ZERO {
             return Err("LOBBY_NOT_FOUND".into());
@@ -234,7 +237,7 @@ impl PrivatePokerTable {
 
             let num_players = table.players.len();
             for i in 0..num_players {
-                if table.players.get(i).unwrap().address.get() == sender {
+                if table.players.get(i).unwrap().address.get() == player_address {
                     return Err("ALREADY_SEATED".into());
                 }
             }
@@ -247,13 +250,19 @@ impl PrivatePokerTable {
             return Err(b"CHIP_TOKEN_NOT_SET")?;
         }
 
-        let lobby_address = self.vm().contract_address();
-        let transferred = IPokerChips::new(chip_token)
-            .transfer_from(&mut *self, sender, lobby_address, buy_in)
+        let mut chips = PrivatePokerChipsStorage::storage_slot();
+        erc20::spend_allowance(&mut chips.token, player_address, chip_token, buy_in)
             .map_err(|_| b"CHIP_TRANSFER_FROM_FAILED".to_vec())?;
-        if !transferred {
-            return Err(b"CHIP_TRANSFER_FROM_REJECTED")?;
-        }
+        erc20::transfer(&mut chips.token, player_address, chip_token, buy_in)
+            .map_err(|_| b"CHIP_TRANSFER_FROM_FAILED".to_vec())?;
+        stylus_core::log(
+            self.vm(),
+            erc20::Transfer {
+                from: player_address,
+                to: chip_token,
+                value: buy_in,
+            },
+        );
 
         Ok(())
     }

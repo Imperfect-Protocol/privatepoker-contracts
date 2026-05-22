@@ -193,6 +193,7 @@ check() {
 
 all_contract_names() {
     printf '%s\n' \
+        account \
         cashier \
         chips \
         diamond \
@@ -507,8 +508,9 @@ print_privatepoker_core_deployment_summary() {
     print_privatepoker_deploy_row table PP_TABLE_FACET "$PP_TABLE_FACET"
     print_privatepoker_deploy_row hand PP_HAND_FACET "$PP_HAND_FACET"
     print_privatepoker_deploy_row spectate PP_SPECTATE_FACET "$PP_SPECTATE_FACET"
-    print_privatepoker_deploy_row chips PP_CHIPS "$PP_CHIPS"
-    print_privatepoker_deploy_row cashier PP_CASHIER "$PP_CASHIER"
+    print_privatepoker_deploy_row account PP_ACCOUNT_FACET "$PP_ACCOUNT_FACET"
+    print_privatepoker_deploy_row cashier PP_CASHIER_FACET "$PP_CASHIER_FACET"
+    print_privatepoker_deploy_row chips PP_CHIPS_FACET "$PP_CHIPS_FACET"
     print_privatepoker_deploy_row signal PP_SIGNAL "$PP_SIGNAL"
     print_privatepoker_deploy_row verify_shuffle PP_VERIFY_SHUFFLE "$PP_VERIFY_SHUFFLE"
     print_privatepoker_deploy_row verify_unmasking PP_VERIFY_UNMASKING "$PP_VERIFY_UNMASKING"
@@ -526,8 +528,12 @@ export PP_LOBBY_FACET=$PP_LOBBY_FACET
 export PP_TABLE_FACET=$PP_TABLE_FACET
 export PP_HAND_FACET=$PP_HAND_FACET
 export PP_SPECTATE_FACET=$PP_SPECTATE_FACET
+export PP_ACCOUNT=$PP_ACCOUNT
+export PP_ACCOUNT_FACET=$PP_ACCOUNT_FACET
 export PP_CHIPS=$PP_CHIPS
+export PP_CHIPS_FACET=$PP_CHIPS_FACET
 export PP_CASHIER=$PP_CASHIER
+export PP_CASHIER_FACET=$PP_CASHIER_FACET
 export PP_SIGNAL=$PP_SIGNAL
 export PP_VERIFY_SHUFFLE=$PP_VERIFY_SHUFFLE
 export PP_VERIFY_UNMASKING=$PP_VERIFY_UNMASKING
@@ -556,8 +562,14 @@ deploy_privatepoker_core() {
     echo "PP_OWNER=$PP_OWNER" >&2
     echo "PP_USDC=$PP_USDC" >&2
 
-    PP_CHIPS=$(capture_deployment deploy_constructed chips 'constructor(address)' "$PP_OWNER") || return 1
-    export PP_CHIPS
+    PP_CHIPS_FACET=$(capture_deployment deploy_constructed chips 'constructor(address)' "$PP_OWNER") || return 1
+    export PP_CHIPS_FACET
+
+    PP_CASHIER_FACET=$(capture_deployment deploy_constructed cashier 'constructor(address,address,address)' "$PP_OWNER" "$PP_USDC" "$PP_CHIPS_FACET") || return 1
+    export PP_CASHIER_FACET
+
+    PP_ACCOUNT_FACET=$(capture_deployment deploy_constructed account 'constructor(address,address,address)' "$PP_OWNER" "$PP_USDC" "$PP_CHIPS_FACET") || return 1
+    export PP_ACCOUNT_FACET
 
     PP_LOBBY_FACET=$(capture_deployment deploy_constructed lobby 'constructor(address)' "$PP_OWNER") || return 1
     export PP_LOBBY_FACET
@@ -571,8 +583,14 @@ deploy_privatepoker_core() {
     PP_SPECTATE_FACET=$(capture_deployment deploy spectate) || return 1
     export PP_SPECTATE_FACET
 
-    PP_LOBBY=$(capture_deployment deploy_constructed diamond 'constructor(address,address,address,address,address)' "$PP_OWNER" "$PP_LOBBY_FACET" "$PP_TABLE_FACET" "$PP_HAND_FACET" "$PP_SPECTATE_FACET") || return 1
+    PP_LOBBY=$(capture_deployment deploy_constructed diamond 'constructor(address,address,address,address,address,address,address,address,address)' "$PP_OWNER" "$PP_LOBBY_FACET" "$PP_TABLE_FACET" "$PP_HAND_FACET" "$PP_SPECTATE_FACET" "$PP_ACCOUNT_FACET" "$PP_CASHIER_FACET" "$PP_CHIPS_FACET" "$PP_USDC") || return 1
     export PP_LOBBY
+    PP_ACCOUNT=$PP_LOBBY
+    PP_CASHIER=$PP_LOBBY
+    PP_CHIPS=$PP_LOBBY
+    export PP_ACCOUNT
+    export PP_CASHIER
+    export PP_CHIPS
 
     PP_SIGNAL=$(capture_deployment deploy_constructed signal 'constructor(address)' "$PP_LOBBY") || return 1
     export PP_SIGNAL
@@ -582,14 +600,6 @@ deploy_privatepoker_core() {
 
     PP_VERIFY_UNMASKING=$(capture_deployment deploy verify_unmasking) || return 1
     export PP_VERIFY_UNMASKING
-
-    PP_CASHIER=$(capture_deployment deploy_constructed cashier 'constructor(address,address,address)' "$PP_OWNER" "$PP_USDC" "$PP_CHIPS") || return 1
-    export PP_CASHIER
-
-    log_step "Wiring Chips/Cashier/Diamond"
-    contract_send "$PP_CHIPS" 'setCashier(address)' "$PP_CASHIER" || return 1
-    contract_send "$PP_CHIPS" 'setLobby(address)' "$PP_LOBBY" || return 1
-    contract_send "$PP_LOBBY" 'setChipToken(address)' "$PP_CHIPS" || return 1
 
     write_privatepoker_core_env "$env_file" || return 1
     export_env_file "$env_file" || return 1
