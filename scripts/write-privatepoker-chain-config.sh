@@ -79,6 +79,7 @@ export const chainConfig = {
   rpcUrl: '$rpc_url',
   usdcContractAddress: '${PP_USDC:-}',
   privatePokerContractAddress: '${PP_LOBBY:-}',
+  signalContractAddress: '${PP_SIGNAL:-}',
   pollingInterval: $polling_interval,
   staleTime: $stale_time,
   lastModified: '20260522T161800Z',

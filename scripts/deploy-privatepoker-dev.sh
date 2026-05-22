@@ -64,6 +64,8 @@ deploy_privatepoker_core
 
 log_step "Creating default Texas Holdem lobby"
 contract_send "$PP_LOBBY" 'addLobby(uint256,uint256,uint256,string)' 1 1 1 "Texas Holdem"
+contract_send "$PP_LOBBY" 'addLobby(uint256,uint256,uint256,string)' 2 2 0 "Omaha"
+contract_send "$PP_LOBBY" 'addLobby(uint256,uint256,uint256,string)' 3 3 0 "Draw Poker"
 
 log_step "Funding requested accounts"
 for account in "$@"; do
