@@ -1,0 +1,34 @@
+[package]
+name = "account"
+version = "0.1.0"
+edition = "2021"
+description = "Private Poker player account and subscription contract"
+
+[dependencies]
+alloy-primitives = { workspace = true }
+alloy-sol-types = { workspace = true }
+privatepoker-common = { workspace = true }
+stylus-sdk = { workspace = true }
+
+[dev-dependencies]
+alloy-primitives = { workspace = true, features = ["sha3-keccak"] }
+tokio = { workspace = true, features = ["full"] }
+eyre = { workspace = true }
+stylus-sdk = { workspace = true, features = ["stylus-test"] }
+
+[features]
+default = ["mini-alloc"]
+export-abi = ["stylus-sdk/export-abi", "privatepoker-common/export-abi"]
+test-debug = [
+    "privatepoker-common/test",
+    "privatepoker-common/debug",
+    "stylus-sdk/debug",
+]
+mini-alloc = ["stylus-sdk/mini-alloc"]
+
+[[bin]]
+name = "account"
+path = "src/main.rs"
+
+[lib]
+crate-type = ["lib", "cdylib"]

@@ -2,9 +2,11 @@ use alloc::{vec, vec::Vec};
 
 use alloy_primitives::Address;
 use alloy_sol_types::{sol, SolCall, SolValue};
-use stylus_sdk::{
-    alloy_primitives::U256, call::RawCall, prelude::*, storage::StorageAddress, stylus_core,
+use privatepoker_common::{
+    erc20,
+    lobby::{PrivatePokerCashierStorage, PrivatePokerChipsStorage},
 };
+use stylus_sdk::{alloy_primitives::U256, call::RawCall, prelude::*, stylus_core};
 
 sol! {
     interface IERC20Like {
@@ -22,11 +24,7 @@ sol! {
 
 #[storage]
 #[entrypoint]
-pub struct Cashier {
-    owner: StorageAddress,
-    usdc: StorageAddress,
-    chips: StorageAddress,
-}
+pub struct Cashier;
 
 #[public]
 impl Cashier {
@@ -37,78 +35,50 @@ impl Cashier {
         usdc: Address,
         chips: Address,
     ) -> Result<(), Vec<u8>> {
-        self.owner.set(initial_owner);
-        self.usdc.set(usdc);
-        self.chips.set(chips);
+        let mut cashier = PrivatePokerCashierStorage::storage_slot();
+        cashier.owner.set(initial_owner);
+        cashier.usdc.set(usdc);
+        cashier.chips.set(chips);
         Ok(())
     }
 
     pub fn owner(&self) -> Address {
-        self.owner.get()
+        PrivatePokerCashierStorage::storage_slot().owner.get()
     }
 
     pub fn usdc(&self) -> Address {
-        self.usdc.get()
+        PrivatePokerCashierStorage::storage_slot().usdc.get()
     }
 
     pub fn asset(&self) -> Address {
-        self.usdc.get()
+        self.usdc()
     }
 
     pub fn chips(&self) -> Address {
-        self.chips.get()
+        PrivatePokerCashierStorage::storage_slot().chips.get()
     }
 
     pub fn share(&self) -> Address {
-        self.chips.get()
+        self.chips()
     }
 
     pub fn set_tokens(&mut self, usdc: Address, chips: Address) -> Result<(), Vec<u8>> {
         self.only_owner()?;
-        self.usdc.set(usdc);
-        self.chips.set(chips);
+        let mut cashier = PrivatePokerCashierStorage::storage_slot();
+        cashier.usdc.set(usdc);
+        cashier.chips.set(chips);
         Ok(())
     }
 
-    pub fn deposit(&mut self, amount: U256) -> Result<(), Vec<u8>> {
-        let receiver = self.vm().msg_sender();
-        self.deposit_to(amount, receiver)?;
-        Ok(())
-    }
-
-    pub fn withdraw(&mut self, amount: U256) -> Result<(), Vec<u8>> {
-        let sender = self.vm().msg_sender();
-        self.withdraw_to(amount, sender, sender)?;
-        Ok(())
-    }
-
-    pub fn deposit_to(&mut self, assets: U256, receiver: Address) -> Result<U256, Vec<u8>> {
-        let sender = self.vm().msg_sender();
-        self.deposit_from(sender, receiver, assets)
-    }
-
-    pub fn mint(&mut self, shares: U256, receiver: Address) -> Result<U256, Vec<u8>> {
-        let assets = self.preview_mint(shares);
-        let sender = self.vm().msg_sender();
-        self.deposit_from(sender, receiver, assets)
-    }
-
-    pub fn withdraw_to(
+    pub fn deposit_from(
         &mut self,
+        payer: Address,
+        receiver: Address,
         assets: U256,
-        receiver: Address,
-        owner: Address,
-    ) -> Result<U256, Vec<u8>> {
-        self.redeem_from(self.preview_withdraw(assets), receiver, owner)
-    }
-
-    pub fn redeem(
-        &mut self,
         shares: U256,
-        receiver: Address,
-        owner: Address,
     ) -> Result<U256, Vec<u8>> {
-        self.redeem_from(shares, receiver, owner)
+        self.require_diamond_call()?;
+        self.deposit_from_internal(payer, receiver, assets, shares)
     }
 
     pub fn total_assets(&self) -> Result<U256, Vec<u8>> {
@@ -116,21 +86,13 @@ impl Cashier {
         let balance = IERC20Like::balanceOfCall {
             account: self.vm().contract_address(),
         };
-        call_u256(
-            self.usdc.get(),
-            balance.abi_encode(),
-            b"USDC_BALANCE_FAILED",
-        )
+        call_u256(self.usdc(), balance.abi_encode(), b"USDC_BALANCE_FAILED")
     }
 
     pub fn total_supply(&self) -> Result<U256, Vec<u8>> {
         self.require_tokens_set()?;
         let supply = IERC20Like::totalSupplyCall {};
-        call_u256(
-            self.chips.get(),
-            supply.abi_encode(),
-            b"CHIPS_SUPPLY_FAILED",
-        )
+        call_u256(self.chips(), supply.abi_encode(), b"CHIPS_SUPPLY_FAILED")
     }
 
     pub fn convert_to_shares(&self, assets: U256) -> U256 {
@@ -168,55 +130,71 @@ impl Cashier {
     pub fn max_withdraw(&self, owner: Address) -> Result<U256, Vec<u8>> {
         self.require_tokens_set()?;
         let balance = IERC20Like::balanceOfCall { account: owner };
-        call_u256(
-            self.chips.get(),
-            balance.abi_encode(),
-            b"CHIPS_BALANCE_FAILED",
-        )
+        call_u256(self.chips(), balance.abi_encode(), b"CHIPS_BALANCE_FAILED")
     }
 
     pub fn max_redeem(&self, owner: Address) -> Result<U256, Vec<u8>> {
         self.max_withdraw(owner)
     }
 
-    fn deposit_from(
+    fn deposit_from_internal(
         &mut self,
-        sender: Address,
+        payer: Address,
         receiver: Address,
         amount: U256,
+        shares: U256,
     ) -> Result<U256, Vec<u8>> {
         if amount == U256::ZERO {
             return Err(b"ZERO_AMOUNT".to_vec());
+        }
+        if shares == U256::ZERO {
+            return Err(b"ZERO_SHARES".to_vec());
+        }
+        if payer == Address::ZERO {
+            return Err(b"PAYER_ZERO".to_vec());
         }
         if receiver == Address::ZERO {
             return Err(b"RECEIVER_ZERO".to_vec());
         }
 
         self.require_tokens_set()?;
-        let cashier = self.vm().contract_address();
-        let shares = self.preview_deposit(amount);
+        let diamond = self.vm().contract_address();
+        let accounted_assets = PrivatePokerCashierStorage::storage_slot()
+            .accounted_assets
+            .get();
+        if payer == diamond {
+            let balance = IERC20Like::balanceOfCall { account: diamond };
+            let balance = call_u256(self.usdc(), balance.abi_encode(), b"USDC_BALANCE_FAILED")?;
+            if balance < accounted_assets + amount {
+                return Err(b"USDC_NOT_RECEIVED".to_vec());
+            }
+        } else {
+            let pull = IERC20Like::transferFromCall {
+                from: payer,
+                to: diamond,
+                value: amount,
+            };
+            call_bool(self.usdc(), pull.abi_encode(), b"USDC_TRANSFER_FROM_FAILED")?;
+        }
+        PrivatePokerCashierStorage::storage_slot()
+            .accounted_assets
+            .set(accounted_assets + amount);
 
-        let pull = IERC20Like::transferFromCall {
-            from: sender,
-            to: cashier,
-            value: amount,
-        };
-        call_bool(
-            self.usdc.get(),
-            pull.abi_encode(),
-            b"USDC_TRANSFER_FROM_FAILED",
-        )?;
-
-        let mint = IERC20Like::mintCall {
-            to: receiver,
-            value: shares,
-        };
-        call_bool(self.chips.get(), mint.abi_encode(), b"CHIPS_MINT_FAILED")?;
+        let mut chips = PrivatePokerChipsStorage::storage_slot();
+        erc20::mint(&mut chips.token, receiver, shares)?;
+        stylus_core::log(
+            self.vm(),
+            erc20::Transfer {
+                from: Address::ZERO,
+                to: receiver,
+                value: shares,
+            },
+        );
 
         stylus_core::log(
             self.vm(),
             Deposit {
-                sender,
+                sender: self.vm().msg_sender(),
                 owner: receiver,
                 assets: amount,
                 shares,
@@ -226,64 +204,25 @@ impl Cashier {
         Ok(shares)
     }
 
-    fn redeem_from(
-        &mut self,
-        shares: U256,
-        receiver: Address,
-        owner: Address,
-    ) -> Result<U256, Vec<u8>> {
-        if shares == U256::ZERO {
-            return Err(b"ZERO_AMOUNT".to_vec());
-        }
-        if receiver == Address::ZERO {
-            return Err(b"RECEIVER_ZERO".to_vec());
-        }
-
-        self.require_tokens_set()?;
-        let sender = self.vm().msg_sender();
-        if owner != sender {
-            return Err(b"OWNER_MUST_BE_SENDER".to_vec());
-        }
-        let assets = self.preview_redeem(shares);
-
-        let burn = IERC20Like::burnCall {
-            from: owner,
-            value: shares,
-        };
-        call_bool(self.chips.get(), burn.abi_encode(), b"CHIPS_BURN_FAILED")?;
-
-        let push = IERC20Like::transferCall {
-            to: receiver,
-            value: assets,
-        };
-        call_bool(self.usdc.get(), push.abi_encode(), b"USDC_TRANSFER_FAILED")?;
-
-        stylus_core::log(
-            self.vm(),
-            Withdraw {
-                sender,
-                receiver,
-                owner,
-                assets,
-                shares,
-            },
-        );
-
-        Ok(assets)
-    }
-
     fn only_owner(&self) -> Result<(), Vec<u8>> {
-        if self.vm().msg_sender() != self.owner.get() {
+        if self.vm().msg_sender() != self.owner() {
             return Err(b"NOT_OWNER".to_vec());
         }
         Ok(())
     }
 
+    fn require_diamond_call(&self) -> Result<(), Vec<u8>> {
+        if self.vm().msg_sender() != self.vm().contract_address() {
+            return Err(b"DIAMOND_ONLY".to_vec());
+        }
+        Ok(())
+    }
+
     fn require_tokens_set(&self) -> Result<(), Vec<u8>> {
-        if self.usdc.get() == Address::ZERO {
+        if self.usdc() == Address::ZERO {
             return Err(b"USDC_NOT_SET".to_vec());
         }
-        if self.chips.get() == Address::ZERO {
+        if self.chips() == Address::ZERO {
             return Err(b"CHIPS_NOT_SET".to_vec());
         }
         Ok(())
