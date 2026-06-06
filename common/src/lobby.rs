@@ -184,10 +184,6 @@ sol! {
         function burn(address from, uint256 value) external returns (bool);
     }
 
-    interface IPrivatePokerSignal {
-        function send_signal(uint256 lobby_id, uint256 table_id, address[] recipients, bytes[] encrypted_data) external;
-    }
-
     struct LobbyInfo {
         uint256 lobby_id;
         uint256 lobby_game_type;
@@ -229,7 +225,6 @@ sol! {
         uint256 subscription_expires_at;
     }
 
-    event HandshakeSignal(address sender, uint256 lobby_id, uint256 table_id, address[] recipients, bytes[] encrypted_data);
     event HandStarted(uint256 lobby_id, uint256 table_id, uint256 seat_number, uint256 remain_count);
     event ChipTokenSet(address chip_token);
     event ChipsPaidOut(address recipient, uint256 amount);

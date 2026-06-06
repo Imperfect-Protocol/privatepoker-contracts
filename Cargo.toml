@@ -7,7 +7,6 @@ members = [
     "contracts/diamond",
     "contracts/hand",
     "contracts/lobby",
-    "contracts/signal",
     "contracts/spectate",
     "contracts/table",
     "contracts/test_usdc",

@@ -51,7 +51,7 @@ rm -f "$core_env" "$test_usdc_env"
 unset PP_TEST_USDC PP_USDC PP_LOBBY PP_ACCOUNT PP_CASHIER PP_CHIPS
 unset PP_LOBBY_FACET PP_TABLE_FACET PP_HAND_FACET PP_SPECTATE_FACET
 unset PP_ACCOUNT_FACET PP_CASHIER_FACET PP_CHIPS_FACET
-unset PP_SIGNAL PP_VERIFY_SHUFFLE PP_VERIFY_UNMASKING
+unset PP_VERIFY_SHUFFLE PP_VERIFY_UNMASKING
 
 log_step "Checking every Private Poker contract"
 check_all_contracts
@@ -78,7 +78,6 @@ echo "Private Poker dev deployment complete."
 echo
 echo "PP_USDC=$PP_USDC"
 echo "PP_LOBBY=$PP_LOBBY"
-echo "PP_SIGNAL=$PP_SIGNAL"
 echo
 echo "Wrote env files:"
 echo "  $test_usdc_env"
