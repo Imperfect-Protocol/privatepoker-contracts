@@ -2,7 +2,7 @@
 
 Arbitrum Stylus contracts for Private Poker.
 
-This workspace contains the Private Poker diamond, lobby/table/hand/spectate facets, signalling contract, chips/cashier/test USDC contracts, and shuffle/unmasking verification contracts.
+This workspace contains the Private Poker diamond, lobby/table/hand/spectate facets, chips/cashier/test USDC contracts, and shuffle/unmasking verification contracts.
 
 ## Required Environment
 
@@ -52,7 +52,7 @@ This runs `cargo stylus check` for every contract and prints a size table at the
 To check a single contract:
 
 ```sh
-./scripts/check-contract.sh signal
+./scripts/check-contract.sh lobby
 ```
 
 ## Deploy Test USDC
@@ -99,7 +99,6 @@ This deploys:
 - `PP_SPECTATE_FACET`
 - `PP_CHIPS`
 - `PP_CASHIER`
-- `PP_SIGNAL`
 - `PP_VERIFY_SHUFFLE`
 - `PP_VERIFY_UNMASKING`
 
@@ -173,4 +172,3 @@ Then run the three `crum_p2p_bot` terminals documented in:
 ```sh
 /crumble/apps/crum_p2p_bot/README.md
 ```
-

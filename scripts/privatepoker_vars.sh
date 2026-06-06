@@ -199,7 +199,6 @@ all_contract_names() {
         diamond \
         hand \
         lobby \
-        signal \
         spectate \
         table \
         test_usdc \
@@ -511,7 +510,6 @@ print_privatepoker_core_deployment_summary() {
     print_privatepoker_deploy_row account PP_ACCOUNT_FACET "$PP_ACCOUNT_FACET"
     print_privatepoker_deploy_row cashier PP_CASHIER_FACET "$PP_CASHIER_FACET"
     print_privatepoker_deploy_row chips PP_CHIPS_FACET "$PP_CHIPS_FACET"
-    print_privatepoker_deploy_row signal PP_SIGNAL "$PP_SIGNAL"
     print_privatepoker_deploy_row verify_shuffle PP_VERIFY_SHUFFLE "$PP_VERIFY_SHUFFLE"
     print_privatepoker_deploy_row verify_unmasking PP_VERIFY_UNMASKING "$PP_VERIFY_UNMASKING"
     echo
@@ -534,7 +532,6 @@ export PP_CHIPS=$PP_CHIPS
 export PP_CHIPS_FACET=$PP_CHIPS_FACET
 export PP_CASHIER=$PP_CASHIER
 export PP_CASHIER_FACET=$PP_CASHIER_FACET
-export PP_SIGNAL=$PP_SIGNAL
 export PP_VERIFY_SHUFFLE=$PP_VERIFY_SHUFFLE
 export PP_VERIFY_UNMASKING=$PP_VERIFY_UNMASKING
 EOF
@@ -591,9 +588,6 @@ deploy_privatepoker_core() {
     export PP_ACCOUNT
     export PP_CASHIER
     export PP_CHIPS
-
-    PP_SIGNAL=$(capture_deployment deploy_constructed signal 'constructor(address)' "$PP_LOBBY") || return 1
-    export PP_SIGNAL
 
     PP_VERIFY_SHUFFLE=$(capture_deployment deploy verify_shuffle) || return 1
     export PP_VERIFY_SHUFFLE
