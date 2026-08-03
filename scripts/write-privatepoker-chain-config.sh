@@ -57,12 +57,30 @@ if [ "$chain_key" = "devnode" ]; then
     rpc_url="/local-rpc"
     polling_interval="3000"
     stale_time="5000"
+    max_gas_block="{
+    privatePoker: {
+      default: 5_000_000n,
+    },
+    verifyShuffle: {
+      default: {
+        constant: 10_000_000n,
+        perPlayer: 10_000_000n,
+      },
+    },
+    verifyUnmasking: {
+      default: {
+        constant: 8_000_000n,
+        perPlayer: 4_000_000n,
+      },
+    },
+  }"
 else
     chain_id="421_614"
     env_chain_id="421614"
     rpc_url="https://sepolia-rollup.arbitrum.io/rpc"
     polling_interval="6000"
     stale_time="10000"
+    max_gas_block="{}"
 fi
 
 if [ -n "${PP_HOME:-}" ] && [ -n "${PP_ENV:-}" ]; then
@@ -77,8 +95,11 @@ export const chainConfig = {
   key: '$chain_key',
   chainId: $chain_id,
   rpcUrl: '$rpc_url',
-  usdcContractAddress: '${PP_USDC:-}',
+  ppdcContractAddress: '${PP_USDC:-}',
   privatePokerContractAddress: '${PP_LOBBY:-}',
+  verifyShuffleContractAddress: '${PP_VERIFY_SHUFFLE:-}',
+  verifyUnmaskingContractAddress: '${PP_VERIFY_UNMASKING:-}',
+  maxGas: $max_gas_block,
   pollingInterval: $polling_interval,
   staleTime: $stale_time,
   lastModified: '20260522T161800Z',

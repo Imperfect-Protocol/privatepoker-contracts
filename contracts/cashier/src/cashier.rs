@@ -6,7 +6,7 @@ use privatepoker_common::{
     erc20,
     lobby::{PrivatePokerCashierStorage, PrivatePokerChipsStorage},
 };
-use stylus_sdk::{alloy_primitives::U256, call::RawCall, prelude::*, stylus_core};
+use stylus_sdk::{alloy_primitives::U256, prelude::*, stylus_core};
 
 sol! {
     interface IERC20Like {
@@ -81,18 +81,28 @@ impl Cashier {
         self.deposit_from_internal(payer, receiver, assets, shares)
     }
 
-    pub fn total_assets(&self) -> Result<U256, Vec<u8>> {
+    pub fn total_assets(&mut self) -> Result<U256, Vec<u8>> {
         self.require_tokens_set()?;
         let balance = IERC20Like::balanceOfCall {
             account: self.vm().contract_address(),
         };
-        call_u256(self.usdc(), balance.abi_encode(), b"USDC_BALANCE_FAILED")
+        call_u256(
+            self,
+            self.usdc(),
+            balance.abi_encode(),
+            b"USDC_BALANCE_FAILED",
+        )
     }
 
-    pub fn total_supply(&self) -> Result<U256, Vec<u8>> {
+    pub fn total_supply(&mut self) -> Result<U256, Vec<u8>> {
         self.require_tokens_set()?;
         let supply = IERC20Like::totalSupplyCall {};
-        call_u256(self.chips(), supply.abi_encode(), b"CHIPS_SUPPLY_FAILED")
+        call_u256(
+            self,
+            self.chips(),
+            supply.abi_encode(),
+            b"CHIPS_SUPPLY_FAILED",
+        )
     }
 
     pub fn convert_to_shares(&self, assets: U256) -> U256 {
@@ -127,13 +137,18 @@ impl Cashier {
         U256::MAX
     }
 
-    pub fn max_withdraw(&self, owner: Address) -> Result<U256, Vec<u8>> {
+    pub fn max_withdraw(&mut self, owner: Address) -> Result<U256, Vec<u8>> {
         self.require_tokens_set()?;
         let balance = IERC20Like::balanceOfCall { account: owner };
-        call_u256(self.chips(), balance.abi_encode(), b"CHIPS_BALANCE_FAILED")
+        call_u256(
+            self,
+            self.chips(),
+            balance.abi_encode(),
+            b"CHIPS_BALANCE_FAILED",
+        )
     }
 
-    pub fn max_redeem(&self, owner: Address) -> Result<U256, Vec<u8>> {
+    pub fn max_redeem(&mut self, owner: Address) -> Result<U256, Vec<u8>> {
         self.max_withdraw(owner)
     }
 
@@ -164,7 +179,12 @@ impl Cashier {
             .get();
         if payer == diamond {
             let balance = IERC20Like::balanceOfCall { account: diamond };
-            let balance = call_u256(self.usdc(), balance.abi_encode(), b"USDC_BALANCE_FAILED")?;
+            let balance = call_u256(
+                self,
+                self.usdc(),
+                balance.abi_encode(),
+                b"USDC_BALANCE_FAILED",
+            )?;
             if balance < accounted_assets + amount {
                 return Err(b"USDC_NOT_RECEIVED".to_vec());
             }
@@ -174,7 +194,12 @@ impl Cashier {
                 to: diamond,
                 value: amount,
             };
-            call_bool(self.usdc(), pull.abi_encode(), b"USDC_TRANSFER_FROM_FAILED")?;
+            call_bool(
+                self,
+                self.usdc(),
+                pull.abi_encode(),
+                b"USDC_TRANSFER_FROM_FAILED",
+            )?;
         }
         PrivatePokerCashierStorage::storage_slot()
             .accounted_assets
@@ -229,8 +254,10 @@ impl Cashier {
     }
 }
 
-fn call_bool(to: Address, calldata: Vec<u8>, err: &[u8]) -> Result<(), Vec<u8>> {
-    let output = unsafe { RawCall::new().flush_storage_cache().call(to, &calldata) }
+fn call_bool(ctx: &mut Cashier, to: Address, calldata: Vec<u8>, err: &[u8]) -> Result<(), Vec<u8>> {
+    let output = ctx
+        .vm()
+        .call(&ctx, to, &calldata)
         .map_err(|_| err.to_vec())?;
     if output.is_empty() {
         return Ok(());
@@ -243,8 +270,15 @@ fn call_bool(to: Address, calldata: Vec<u8>, err: &[u8]) -> Result<(), Vec<u8>> 
     }
 }
 
-fn call_u256(to: Address, calldata: Vec<u8>, err: &[u8]) -> Result<U256, Vec<u8>> {
-    let output = unsafe { RawCall::new().flush_storage_cache().call(to, &calldata) }
+fn call_u256(
+    ctx: &mut Cashier,
+    to: Address,
+    calldata: Vec<u8>,
+    err: &[u8],
+) -> Result<U256, Vec<u8>> {
+    let output = ctx
+        .vm()
+        .call(&ctx, to, &calldata)
         .map_err(|_| err.to_vec())?;
     U256::abi_decode(&output, true).map_err(|_| err.to_vec())
 }

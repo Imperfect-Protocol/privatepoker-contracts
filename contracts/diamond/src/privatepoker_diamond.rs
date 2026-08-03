@@ -30,6 +30,8 @@ impl PrivatePokerDiamond {
         account_facet: Address,
         cashier_facet: Address,
         chips_facet: Address,
+        verify_shuffle: Address,
+        verify_unmasking: Address,
         usdc: Address,
     ) -> Result<(), Vec<u8>> {
         ensure_not_zero(lobby_facet, b"LOBBY_FACET_ZERO")?;
@@ -39,6 +41,8 @@ impl PrivatePokerDiamond {
         ensure_not_zero(account_facet, b"ACCOUNT_FACET_ZERO")?;
         ensure_not_zero(cashier_facet, b"CASHIER_FACET_ZERO")?;
         ensure_not_zero(chips_facet, b"CHIPS_FACET_ZERO")?;
+        ensure_not_zero(verify_shuffle, b"VERIFY_SHUFFLE_ZERO")?;
+        ensure_not_zero(verify_unmasking, b"VERIFY_UNMASKING_ZERO")?;
         ensure_not_zero(usdc, b"USDC_ZERO")?;
 
         let diamond = self.vm().contract_address();
@@ -53,6 +57,8 @@ impl PrivatePokerDiamond {
         main_lobby.facets.account.set(account_facet);
         main_lobby.facets.cashier.set(cashier_facet);
         main_lobby.facets.chips.set(chips_facet);
+        main_lobby.facets.verify_shuffle.set(verify_shuffle);
+        main_lobby.facets.verify_unmasking.set(verify_unmasking);
 
         let mut chips = PrivatePokerChipsStorage::storage_slot();
         erc20::init_token(
@@ -105,6 +111,14 @@ impl PrivatePokerDiamond {
 
     pub fn chips_facet(&self) -> Address {
         MainLobby::storage_slot().facets.chips.get()
+    }
+
+    pub fn verify_shuffle(&self) -> Address {
+        MainLobby::storage_slot().facets.verify_shuffle.get()
+    }
+
+    pub fn verify_unmasking(&self) -> Address {
+        MainLobby::storage_slot().facets.verify_unmasking.get()
     }
 
     #[payable]
@@ -160,7 +174,8 @@ fn facet_kind_for_selector(selector: [u8; 4]) -> Result<FacetKind, Vec<u8>> {
         | IPrivatePokerTableFacet::joinTableCall::SELECTOR
         | IPrivatePokerTableFacet::removeTableCall::SELECTOR => FacetKind::Table,
 
-        IPrivatePokerHandFacet::startHandCall::SELECTOR => FacetKind::Hand,
+        IPrivatePokerHandFacet::startHandCall::SELECTOR
+        | IPrivatePokerHandFacet::submitPublicKeyCall::SELECTOR => FacetKind::Hand,
 
         IPrivatePokerSpectateFacet::getLobbyCountCall::SELECTOR
         | IPrivatePokerSpectateFacet::getLobbyAtCall::SELECTOR
@@ -266,6 +281,10 @@ mod tests {
     fn routes_hand_selectors_to_hand_facet() {
         assert_eq!(
             facet_kind_for_selector(IPrivatePokerHandFacet::startHandCall::SELECTOR),
+            Ok(FacetKind::Hand)
+        );
+        assert_eq!(
+            facet_kind_for_selector(IPrivatePokerHandFacet::submitPublicKeyCall::SELECTOR),
             Ok(FacetKind::Hand)
         );
     }

@@ -33,6 +33,8 @@ pub struct Table {
     pub current_hand: StorageU256,
     pub hand_start_ready_count: StorageU256,
     pub hand_start_ready: StorageMap<Address, StorageU256>,
+    pub public_key_ready_count: StorageMap<U256, StorageU256>,
+    pub public_key_ready: StorageMap<Address, StorageU256>,
 }
 
 #[storage]
@@ -66,6 +68,8 @@ pub struct PrivatePokerFacetAddresses {
     pub account: StorageAddress,
     pub cashier: StorageAddress,
     pub chips: StorageAddress,
+    pub verify_shuffle: StorageAddress,
+    pub verify_unmasking: StorageAddress,
 }
 
 #[storage]
@@ -122,6 +126,15 @@ sol! {
 
     interface IPrivatePokerHandFacet {
         function startHand(uint256 lobby_id, uint256 table_id) external;
+        function submitPublicKey(uint256 lobby_id, uint256 table_id, uint256 hand_id, uint8 player, bytes public_key, bytes[] masked_before, bytes[] masked_after, bytes[] traces, bytes[] player_keys, bytes[][] shuffle_history, bytes[][][] unmasking_sequence_cards, uint8[] unmasking_actors, uint8[] unmasking_states) external;
+    }
+
+    interface IPrivatePokerVerifyShuffle {
+        function verifyShuffle(bytes[] masked_before, bytes[] masked_after, bytes pk, bytes[] traces) external;
+    }
+
+    interface IPrivatePokerVerifyUnmasking {
+        function verifyUnmasking(uint8 num_players, bytes[] player_keys, bytes[][] shuffle_history, bytes[][][] unmasking_sequence_cards, uint8[] unmasking_actors, uint8[] unmasking_states) external;
     }
 
     interface IPrivatePokerSpectateFacet {
@@ -226,6 +239,8 @@ sol! {
     }
 
     event HandStarted(uint256 lobby_id, uint256 table_id, uint256 seat_number, uint256 remain_count);
+    event PublicKeySubmitted(uint256 lobby_id, uint256 table_id, uint256 hand_id, uint256 seat_number, uint256 remain_count);
+    event HandVerified(uint256 lobby_id, uint256 table_id, uint256 hand_id);
     event ChipTokenSet(address chip_token);
     event ChipsPaidOut(address recipient, uint256 amount);
     event LobbyCreated(uint256 id, string name);

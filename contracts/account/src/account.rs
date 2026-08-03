@@ -9,7 +9,7 @@ use privatepoker_common::{
         PrivatePokerChipsStorage, SubscriptionPaid,
     },
 };
-use stylus_sdk::{abi::Bytes, alloy_primitives::U256, call::RawCall, prelude::*, stylus_core};
+use stylus_sdk::{abi::Bytes, alloy_primitives::U256, prelude::*, stylus_core};
 
 sol! {
     interface IERC20Like {
@@ -314,7 +314,7 @@ impl PrivatePokerAccount {
             .accounted_assets
             .get();
         let balance = IERC20Like::balanceOfCall { account: diamond };
-        let balance = call_u256(usdc, balance.abi_encode(), b"USDC_BALANCE_FAILED")?;
+        let balance = call_u256(self, usdc, balance.abi_encode(), b"USDC_BALANCE_FAILED")?;
         if balance < accounted_assets + assets {
             return Err(b"USDC_NOT_RECEIVED".to_vec());
         }
@@ -381,8 +381,15 @@ impl PrivatePokerAccount {
     }
 }
 
-fn call_u256(to: Address, calldata: Vec<u8>, err: &[u8]) -> Result<U256, Vec<u8>> {
-    let output = unsafe { RawCall::new().flush_storage_cache().call(to, &calldata) }
+fn call_u256(
+    ctx: &mut PrivatePokerAccount,
+    to: Address,
+    calldata: Vec<u8>,
+    err: &[u8],
+) -> Result<U256, Vec<u8>> {
+    let output = ctx
+        .vm()
+        .call(&ctx, to, &calldata)
         .map_err(|_| err.to_vec())?;
     U256::abi_decode(&output, true).map_err(|_| err.to_vec())
 }

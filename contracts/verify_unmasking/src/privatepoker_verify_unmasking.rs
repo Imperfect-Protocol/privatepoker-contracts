@@ -59,14 +59,18 @@ impl PrivatePokerVerifyUnmasking {
             v_unmasking_sequence_cards.push(v_unmasking_stage);
         }
 
-        verify_unmasking(
+        if verify_unmasking(
             num_players,
             v_player_keys,
             v_shuffle_history,
             v_unmasking_sequence_cards,
             unmasking_actors,
             unmasking_states,
-        )?;
+        )?
+        .is_some()
+        {
+            return Err(b"UNMASKING_VERIFICATION_FAILED")?;
+        }
 
         Ok(())
     }
@@ -238,4 +242,312 @@ pub fn make_g1_from_compressed_slice(data: &[u8]) -> Result<G1Affine, &'static s
     G1Affine::from_compressed(&bytes)
         .into_option()
         .ok_or("G1_DECODE_ERROR")
+}
+
+#[cfg(test)]
+mod tests {
+    use alloc::{vec, vec::Vec};
+
+    use alloy_primitives::U8;
+    use bls12_381::{G1Affine, G1Projective, G2Affine, G2Projective, Scalar};
+    use pairing::group::Curve;
+    use stylus_sdk::{abi::Bytes, testing::TestVM};
+
+    use super::{
+        verify_unmasking, PrivatePokerVerifyUnmasking, POKER_HAND_STATE_UNMASK_COMMUNITY_CARDS,
+        POKER_HAND_STATE_UNMASK_HOLE_CARDS, POKER_HAND_STATE_UNMASK_SHOWDOWN,
+    };
+
+    type ContractArgs = (
+        U8,
+        Vec<Bytes>,
+        Vec<Vec<Bytes>>,
+        Vec<Vec<Vec<Bytes>>>,
+        Vec<U8>,
+        Vec<U8>,
+    );
+
+    struct KnownUnmaskingState {
+        player_keys: Vec<G2Affine>,
+        shuffle_history: Vec<Vec<G1Affine>>,
+        unmasking_sequence_cards: Vec<Vec<Vec<G1Affine>>>,
+        unmasking_actors: Vec<U8>,
+        unmasking_states: Vec<U8>,
+    }
+
+    fn card(seed: u64) -> G1Affine {
+        (G1Projective::generator() * Scalar::from(seed)).to_affine()
+    }
+
+    fn public_key(sk: Scalar) -> G2Affine {
+        (G2Projective::generator() * sk).to_affine()
+    }
+
+    fn mask(point: G1Affine, sk: Scalar) -> G1Affine {
+        (G1Projective::from(point) * sk).to_affine()
+    }
+
+    fn unmask(point: G1Affine, sk: Scalar) -> G1Affine {
+        mask(point, sk.invert().unwrap())
+    }
+
+    fn u8v(value: u8) -> U8 {
+        U8::from(value)
+    }
+
+    fn known_unmasking_state() -> KnownUnmaskingState {
+        let sk0 = Scalar::from(17u64);
+        let sk1 = Scalar::from(19u64);
+        let player_keys = vec![public_key(sk0), public_key(sk1)];
+
+        let base = (31u64..40).map(card).collect::<Vec<_>>();
+        let final_deck = base
+            .iter()
+            .map(|point| mask(mask(*point, sk0), sk1))
+            .collect::<Vec<_>>();
+
+        let p0_hole_after_p1 = final_deck[0..2]
+            .iter()
+            .map(|point| unmask(*point, sk1))
+            .collect::<Vec<_>>();
+        let p1_hole_after_p0 = final_deck[2..4]
+            .iter()
+            .map(|point| unmask(*point, sk0))
+            .collect::<Vec<_>>();
+
+        let flop_after_p0 = final_deck[4..7]
+            .iter()
+            .map(|point| unmask(*point, sk0))
+            .collect::<Vec<_>>();
+        let flop_after_p0_p1 = flop_after_p0
+            .iter()
+            .map(|point| unmask(*point, sk1))
+            .collect::<Vec<_>>();
+
+        let turn_after_p0 = final_deck[7..8]
+            .iter()
+            .map(|point| unmask(*point, sk0))
+            .collect::<Vec<_>>();
+        let turn_after_p0_p1 = turn_after_p0
+            .iter()
+            .map(|point| unmask(*point, sk1))
+            .collect::<Vec<_>>();
+
+        let river_after_p0 = final_deck[8..9]
+            .iter()
+            .map(|point| unmask(*point, sk0))
+            .collect::<Vec<_>>();
+        let river_after_p0_p1 = river_after_p0
+            .iter()
+            .map(|point| unmask(*point, sk1))
+            .collect::<Vec<_>>();
+
+        let p0_showdown = p0_hole_after_p1
+            .iter()
+            .map(|point| unmask(*point, sk0))
+            .collect::<Vec<_>>();
+        let p1_showdown = p1_hole_after_p0
+            .iter()
+            .map(|point| unmask(*point, sk1))
+            .collect::<Vec<_>>();
+
+        KnownUnmaskingState {
+            player_keys,
+            shuffle_history: vec![final_deck],
+            unmasking_sequence_cards: vec![
+                vec![vec![], p1_hole_after_p0.clone()],
+                vec![p0_hole_after_p1.clone(), vec![]],
+                vec![flop_after_p0],
+                vec![flop_after_p0_p1],
+                vec![turn_after_p0],
+                vec![turn_after_p0_p1],
+                vec![river_after_p0],
+                vec![river_after_p0_p1],
+                vec![p0_showdown, vec![]],
+                vec![vec![], p1_showdown],
+            ],
+            unmasking_actors: vec![
+                u8v(0),
+                u8v(1),
+                u8v(0),
+                u8v(1),
+                u8v(0),
+                u8v(1),
+                u8v(0),
+                u8v(1),
+                u8v(0),
+                u8v(1),
+            ],
+            unmasking_states: vec![
+                u8v(POKER_HAND_STATE_UNMASK_HOLE_CARDS),
+                u8v(POKER_HAND_STATE_UNMASK_HOLE_CARDS),
+                u8v(POKER_HAND_STATE_UNMASK_COMMUNITY_CARDS),
+                u8v(POKER_HAND_STATE_UNMASK_COMMUNITY_CARDS),
+                u8v(POKER_HAND_STATE_UNMASK_COMMUNITY_CARDS),
+                u8v(POKER_HAND_STATE_UNMASK_COMMUNITY_CARDS),
+                u8v(POKER_HAND_STATE_UNMASK_COMMUNITY_CARDS),
+                u8v(POKER_HAND_STATE_UNMASK_COMMUNITY_CARDS),
+                u8v(POKER_HAND_STATE_UNMASK_SHOWDOWN),
+                u8v(POKER_HAND_STATE_UNMASK_SHOWDOWN),
+            ],
+        }
+    }
+
+    fn g1_bytes(point: G1Affine) -> Bytes {
+        Bytes(point.to_compressed().to_vec())
+    }
+
+    fn g2_bytes(point: G2Affine) -> Bytes {
+        Bytes(point.to_compressed().to_vec())
+    }
+
+    fn g1_rows_bytes(rows: Vec<Vec<G1Affine>>) -> Vec<Vec<Bytes>> {
+        rows.into_iter()
+            .map(|row| row.into_iter().map(g1_bytes).collect())
+            .collect()
+    }
+
+    fn g1_stages_bytes(stages: Vec<Vec<Vec<G1Affine>>>) -> Vec<Vec<Vec<Bytes>>> {
+        stages
+            .into_iter()
+            .map(|stage| {
+                stage
+                    .into_iter()
+                    .map(|row| row.into_iter().map(g1_bytes).collect())
+                    .collect()
+            })
+            .collect()
+    }
+
+    fn unmasking_contract_args(state: KnownUnmaskingState) -> ContractArgs {
+        (
+            u8v(2),
+            state.player_keys.into_iter().map(g2_bytes).collect(),
+            g1_rows_bytes(state.shuffle_history),
+            g1_stages_bytes(state.unmasking_sequence_cards),
+            state.unmasking_actors,
+            state.unmasking_states,
+        )
+    }
+
+    #[test]
+    fn verifies_known_two_player_unmasking_state() {
+        let state = known_unmasking_state();
+
+        assert_eq!(
+            verify_unmasking(
+                u8v(2),
+                state.player_keys,
+                state.shuffle_history,
+                state.unmasking_sequence_cards,
+                state.unmasking_actors,
+                state.unmasking_states,
+            ),
+            Ok(None)
+        );
+    }
+
+    #[test]
+    fn identifies_player_that_submitted_invalid_unmasking() {
+        let mut state = known_unmasking_state();
+        state.unmasking_sequence_cards[0][1][0] = card(999);
+
+        assert_eq!(
+            verify_unmasking(
+                u8v(2),
+                state.player_keys,
+                state.shuffle_history,
+                state.unmasking_sequence_cards,
+                state.unmasking_actors,
+                state.unmasking_states,
+            ),
+            Ok(Some(0))
+        );
+    }
+
+    #[test]
+    fn rejects_mismatched_player_key_count() {
+        let mut state = known_unmasking_state();
+        state.player_keys.pop();
+
+        assert_eq!(
+            verify_unmasking(
+                u8v(2),
+                state.player_keys,
+                state.shuffle_history,
+                state.unmasking_sequence_cards,
+                state.unmasking_actors,
+                state.unmasking_states,
+            ),
+            Err(b"NUM_PLAYERS_MISMATCH".to_vec())
+        );
+    }
+
+    #[test]
+    fn testvm_contract_accepts_known_unmasking_state() {
+        let vm = TestVM::default();
+        let mut contract = PrivatePokerVerifyUnmasking::from(&vm);
+        let (num_players, player_keys, shuffle_history, unmasking_sequence_cards, actors, states) =
+            unmasking_contract_args(known_unmasking_state());
+
+        assert!(contract
+            .verify_unmasking(
+                num_players,
+                player_keys,
+                shuffle_history,
+                unmasking_sequence_cards,
+                actors,
+                states,
+            )
+            .is_ok());
+    }
+
+    #[test]
+    fn testvm_contract_rejects_invalid_unmasking_submission() {
+        let vm = TestVM::default();
+        let mut contract = PrivatePokerVerifyUnmasking::from(&vm);
+        let mut state = known_unmasking_state();
+        state.unmasking_sequence_cards[0][1][0] = card(999);
+        let (num_players, player_keys, shuffle_history, unmasking_sequence_cards, actors, states) =
+            unmasking_contract_args(state);
+
+        assert_eq!(
+            contract.verify_unmasking(
+                num_players,
+                player_keys,
+                shuffle_history,
+                unmasking_sequence_cards,
+                actors,
+                states,
+            ),
+            Err(b"UNMASKING_VERIFICATION_FAILED".to_vec())
+        );
+    }
+
+    #[test]
+    fn testvm_contract_rejects_invalid_player_key_bytes() {
+        let vm = TestVM::default();
+        let mut contract = PrivatePokerVerifyUnmasking::from(&vm);
+        let (
+            num_players,
+            mut player_keys,
+            shuffle_history,
+            unmasking_sequence_cards,
+            actors,
+            states,
+        ) = unmasking_contract_args(known_unmasking_state());
+        player_keys[0] = Bytes(vec![1, 2, 3]);
+
+        assert_eq!(
+            contract.verify_unmasking(
+                num_players,
+                player_keys,
+                shuffle_history,
+                unmasking_sequence_cards,
+                actors,
+                states,
+            ),
+            Err(b"INVALID_PLAYER_KEY".to_vec())
+        );
+    }
 }

@@ -580,7 +580,13 @@ deploy_privatepoker_core() {
     PP_SPECTATE_FACET=$(capture_deployment deploy spectate) || return 1
     export PP_SPECTATE_FACET
 
-    PP_LOBBY=$(capture_deployment deploy_constructed diamond 'constructor(address,address,address,address,address,address,address,address,address)' "$PP_OWNER" "$PP_LOBBY_FACET" "$PP_TABLE_FACET" "$PP_HAND_FACET" "$PP_SPECTATE_FACET" "$PP_ACCOUNT_FACET" "$PP_CASHIER_FACET" "$PP_CHIPS_FACET" "$PP_USDC") || return 1
+    PP_VERIFY_SHUFFLE=$(capture_deployment deploy verify_shuffle) || return 1
+    export PP_VERIFY_SHUFFLE
+
+    PP_VERIFY_UNMASKING=$(capture_deployment deploy verify_unmasking) || return 1
+    export PP_VERIFY_UNMASKING
+
+    PP_LOBBY=$(capture_deployment deploy_constructed diamond 'constructor(address,address,address,address,address,address,address,address,address,address,address)' "$PP_OWNER" "$PP_LOBBY_FACET" "$PP_TABLE_FACET" "$PP_HAND_FACET" "$PP_SPECTATE_FACET" "$PP_ACCOUNT_FACET" "$PP_CASHIER_FACET" "$PP_CHIPS_FACET" "$PP_VERIFY_SHUFFLE" "$PP_VERIFY_UNMASKING" "$PP_USDC") || return 1
     export PP_LOBBY
     PP_ACCOUNT=$PP_LOBBY
     PP_CASHIER=$PP_LOBBY
@@ -588,12 +594,6 @@ deploy_privatepoker_core() {
     export PP_ACCOUNT
     export PP_CASHIER
     export PP_CHIPS
-
-    PP_VERIFY_SHUFFLE=$(capture_deployment deploy verify_shuffle) || return 1
-    export PP_VERIFY_SHUFFLE
-
-    PP_VERIFY_UNMASKING=$(capture_deployment deploy verify_unmasking) || return 1
-    export PP_VERIFY_UNMASKING
 
     write_privatepoker_core_env "$env_file" || return 1
     export_env_file "$env_file" || return 1
