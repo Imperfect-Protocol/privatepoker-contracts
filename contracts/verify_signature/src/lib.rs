@@ -4,6 +4,6 @@
 #[macro_use]
 extern crate alloc;
 
-pub mod privatepoker_verify_shuffle;
+pub mod privatepoker_verify_signature;
 
-pub use privatepoker_verify_shuffle::*;
+pub use privatepoker_verify_signature::*;

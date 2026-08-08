@@ -5,10 +5,10 @@ use alloy_sol_types::SolCall;
 use privatepoker_common::{
     erc20,
     lobby::{
-        IPrivatePokerAccountFacet, IPrivatePokerCashierFacet, IPrivatePokerChipsFacet,
-        IPrivatePokerHandFacet, IPrivatePokerLobbyFacet, IPrivatePokerSpectateFacet,
-        IPrivatePokerTableFacet, MainLobby, PrivatePokerAccountsStorage,
-        PrivatePokerCashierStorage, PrivatePokerChipsStorage,
+        IPrivatePokerAccountFacet, IPrivatePokerAggregatePubKeyFacet, IPrivatePokerCashierFacet,
+        IPrivatePokerChipsFacet, IPrivatePokerHandFacet, IPrivatePokerLobbyFacet,
+        IPrivatePokerSettlerFacet, IPrivatePokerSpectateFacet, IPrivatePokerTableFacet, MainLobby,
+        PrivatePokerAccountsStorage, PrivatePokerCashierStorage, PrivatePokerChipsStorage,
     },
 };
 use stylus_sdk::{prelude::*, ArbResult};
@@ -30,8 +30,9 @@ impl PrivatePokerDiamond {
         account_facet: Address,
         cashier_facet: Address,
         chips_facet: Address,
-        verify_shuffle: Address,
-        verify_unmasking: Address,
+        settler_facet: Address,
+        aggregate_pub_key_facet: Address,
+        verify_signature: Address,
         usdc: Address,
     ) -> Result<(), Vec<u8>> {
         ensure_not_zero(lobby_facet, b"LOBBY_FACET_ZERO")?;
@@ -41,8 +42,9 @@ impl PrivatePokerDiamond {
         ensure_not_zero(account_facet, b"ACCOUNT_FACET_ZERO")?;
         ensure_not_zero(cashier_facet, b"CASHIER_FACET_ZERO")?;
         ensure_not_zero(chips_facet, b"CHIPS_FACET_ZERO")?;
-        ensure_not_zero(verify_shuffle, b"VERIFY_SHUFFLE_ZERO")?;
-        ensure_not_zero(verify_unmasking, b"VERIFY_UNMASKING_ZERO")?;
+        ensure_not_zero(settler_facet, b"SETTLER_FACET_ZERO")?;
+        ensure_not_zero(aggregate_pub_key_facet, b"AGGREGATE_PUB_KEY_FACET_ZERO")?;
+        ensure_not_zero(verify_signature, b"VERIFY_SIGNATURE_ZERO")?;
         ensure_not_zero(usdc, b"USDC_ZERO")?;
 
         let diamond = self.vm().contract_address();
@@ -57,8 +59,12 @@ impl PrivatePokerDiamond {
         main_lobby.facets.account.set(account_facet);
         main_lobby.facets.cashier.set(cashier_facet);
         main_lobby.facets.chips.set(chips_facet);
-        main_lobby.facets.verify_shuffle.set(verify_shuffle);
-        main_lobby.facets.verify_unmasking.set(verify_unmasking);
+        main_lobby.facets.settler.set(settler_facet);
+        main_lobby
+            .facets
+            .aggregate_pub_key
+            .set(aggregate_pub_key_facet);
+        main_lobby.facets.verify_signature.set(verify_signature);
 
         let mut chips = PrivatePokerChipsStorage::storage_slot();
         erc20::init_token(
@@ -113,12 +119,16 @@ impl PrivatePokerDiamond {
         MainLobby::storage_slot().facets.chips.get()
     }
 
-    pub fn verify_shuffle(&self) -> Address {
-        MainLobby::storage_slot().facets.verify_shuffle.get()
+    pub fn settler_facet(&self) -> Address {
+        MainLobby::storage_slot().facets.settler.get()
     }
 
-    pub fn verify_unmasking(&self) -> Address {
-        MainLobby::storage_slot().facets.verify_unmasking.get()
+    pub fn aggregate_pub_key_facet(&self) -> Address {
+        MainLobby::storage_slot().facets.aggregate_pub_key.get()
+    }
+
+    pub fn verify_signature(&self) -> Address {
+        MainLobby::storage_slot().facets.verify_signature.get()
     }
 
     #[payable]
@@ -147,6 +157,8 @@ fn facet_for_selector(selector: [u8; 4]) -> Result<Address, Vec<u8>> {
         FacetKind::Account => main_lobby.facets.account.get(),
         FacetKind::Cashier => main_lobby.facets.cashier.get(),
         FacetKind::Chips => main_lobby.facets.chips.get(),
+        FacetKind::Settler => main_lobby.facets.settler.get(),
+        FacetKind::AggregatePubKey => main_lobby.facets.aggregate_pub_key.get(),
     };
 
     ensure_not_zero(facet, b"FACET_NOT_INSTALLED")?;
@@ -162,6 +174,8 @@ enum FacetKind {
     Account,
     Cashier,
     Chips,
+    Settler,
+    AggregatePubKey,
 }
 
 fn facet_kind_for_selector(selector: [u8; 4]) -> Result<FacetKind, Vec<u8>> {
@@ -174,8 +188,13 @@ fn facet_kind_for_selector(selector: [u8; 4]) -> Result<FacetKind, Vec<u8>> {
         | IPrivatePokerTableFacet::joinTableCall::SELECTOR
         | IPrivatePokerTableFacet::removeTableCall::SELECTOR => FacetKind::Table,
 
-        IPrivatePokerHandFacet::startHandCall::SELECTOR
-        | IPrivatePokerHandFacet::submitPublicKeyCall::SELECTOR => FacetKind::Hand,
+        IPrivatePokerHandFacet::startHandCall::SELECTOR => FacetKind::Hand,
+
+        IPrivatePokerAggregatePubKeyFacet::setTableAggregatePublicKeyCall::SELECTOR => {
+            FacetKind::AggregatePubKey
+        }
+
+        IPrivatePokerSettlerFacet::settleHandCall::SELECTOR => FacetKind::Settler,
 
         IPrivatePokerSpectateFacet::getLobbyCountCall::SELECTOR
         | IPrivatePokerSpectateFacet::getLobbyAtCall::SELECTOR
@@ -283,9 +302,23 @@ mod tests {
             facet_kind_for_selector(IPrivatePokerHandFacet::startHandCall::SELECTOR),
             Ok(FacetKind::Hand)
         );
+    }
+
+    #[test]
+    fn routes_aggregate_pub_key_selectors_to_aggregate_pub_key_facet() {
         assert_eq!(
-            facet_kind_for_selector(IPrivatePokerHandFacet::submitPublicKeyCall::SELECTOR),
-            Ok(FacetKind::Hand)
+            facet_kind_for_selector(
+                IPrivatePokerAggregatePubKeyFacet::setTableAggregatePublicKeyCall::SELECTOR
+            ),
+            Ok(FacetKind::AggregatePubKey)
+        );
+    }
+
+    #[test]
+    fn routes_settler_selectors_to_settler_facet() {
+        assert_eq!(
+            facet_kind_for_selector(IPrivatePokerSettlerFacet::settleHandCall::SELECTOR),
+            Ok(FacetKind::Settler)
         );
     }
 

@@ -22,15 +22,25 @@ pub struct TablePlayer {
 }
 
 #[storage]
+pub struct Hand {
+    pub pot_size: StorageU256,
+    pub pot_split: StorageVec<StorageU256>,
+    pub digest: StorageBytes,
+    pub aggregate_signature: StorageBytes,
+}
+
+#[storage]
 pub struct Table {
     pub owner: StorageAddress,
     pub id: StorageU256,
     pub flags: StorageU256,
     pub name: StorageString,
     pub buy_in: StorageU256,
+    pub aggregate_public_key: StorageBytes,
     pub players: StorageVec<TablePlayer>,
     pub total_buyin: StorageU256,
     pub current_hand: StorageU256,
+    pub hands: StorageMap<U256, Hand>,
     pub hand_start_ready_count: StorageU256,
     pub hand_start_ready: StorageMap<Address, StorageU256>,
     pub public_key_ready_count: StorageMap<U256, StorageU256>,
@@ -68,8 +78,9 @@ pub struct PrivatePokerFacetAddresses {
     pub account: StorageAddress,
     pub cashier: StorageAddress,
     pub chips: StorageAddress,
-    pub verify_shuffle: StorageAddress,
-    pub verify_unmasking: StorageAddress,
+    pub settler: StorageAddress,
+    pub aggregate_pub_key: StorageAddress,
+    pub verify_signature: StorageAddress,
 }
 
 #[storage]
@@ -126,15 +137,18 @@ sol! {
 
     interface IPrivatePokerHandFacet {
         function startHand(uint256 lobby_id, uint256 table_id) external;
-        function submitPublicKey(uint256 lobby_id, uint256 table_id, uint256 hand_id, uint8 player, bytes public_key, bytes[] masked_before, bytes[] masked_after, bytes[] traces, bytes[] player_keys, bytes[][] shuffle_history, bytes[][][] unmasking_sequence_cards, uint8[] unmasking_actors, uint8[] unmasking_states) external;
     }
 
-    interface IPrivatePokerVerifyShuffle {
-        function verifyShuffle(bytes[] masked_before, bytes[] masked_after, bytes pk, bytes[] traces) external;
+    interface IPrivatePokerAggregatePubKeyFacet {
+        function setTableAggregatePublicKey(uint256 lobby_id, uint256 table_id, bytes aggregate_public_key, bytes aggregate_signature) external;
     }
 
-    interface IPrivatePokerVerifyUnmasking {
-        function verifyUnmasking(uint8 num_players, bytes[] player_keys, bytes[][] shuffle_history, bytes[][][] unmasking_sequence_cards, uint8[] unmasking_actors, uint8[] unmasking_states) external;
+    interface IPrivatePokerSettlerFacet {
+        function settleHand(uint256 lobby_id, uint256 table_id, uint256 hand_id, uint256 pot_size, uint256[] pot_split, uint256[] chips_balances, bytes digest, bytes aggregate_signature) external;
+    }
+
+    interface IPrivatePokerVerifySignature {
+        function verifySignature(bytes digest, bytes aggregate_public_key, bytes aggregate_signature) external returns (bool);
     }
 
     interface IPrivatePokerSpectateFacet {
@@ -239,8 +253,8 @@ sol! {
     }
 
     event HandStarted(uint256 lobby_id, uint256 table_id, uint256 seat_number, uint256 remain_count);
-    event PublicKeySubmitted(uint256 lobby_id, uint256 table_id, uint256 hand_id, uint256 seat_number, uint256 remain_count);
-    event HandVerified(uint256 lobby_id, uint256 table_id, uint256 hand_id);
+    event TableAggregatePublicKeySet(uint256 lobby_id, uint256 table_id);
+    event HandSettled(uint256 lobby_id, uint256 table_id, uint256 hand_id, bytes digest);
     event ChipTokenSet(address chip_token);
     event ChipsPaidOut(address recipient, uint256 amount);
     event LobbyCreated(uint256 id, string name);
@@ -328,6 +342,7 @@ pub fn clear_table(table: &mut Table) {
     table.flags.erase();
     table.name.erase();
     table.buy_in.erase();
+    table.aggregate_public_key.erase();
     table.total_buyin.erase();
     table.current_hand.erase();
     table.hand_start_ready_count.erase();

@@ -2,16 +2,17 @@
 resolver = "2"
 members = [
     "contracts/account",
+    "contracts/aggregate_pub_key",
     "contracts/cashier",
     "contracts/chips",
     "contracts/diamond",
     "contracts/hand",
     "contracts/lobby",
+    "contracts/settler",
     "contracts/spectate",
     "contracts/table",
     "contracts/test_usdc",
-    "contracts/verify_shuffle",
-    "contracts/verify_unmasking",
+    "contracts/verify_signature",
     "common"
 ]
 
@@ -28,6 +29,7 @@ hex = { version = "0.4", default-features = false }
 pairing = "0.23.0"
 privatepoker-common = { path = "./common" }
 stylus-sdk = "0.9.0"
+stylus-core = "0.9.0"
 tokio = { version = "1.12.0", features = ["full"] }
 
 [profile.release]

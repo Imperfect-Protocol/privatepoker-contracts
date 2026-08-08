@@ -1,19 +1,20 @@
 [package]
-name = "lobby"
+name = "settler"
 version = "0.1.11"
 edition = "2021"
-description = "Private Poker Lobby"
+description = "Private Poker Settler Facet"
 
 [dependencies]
 alloy-primitives = { workspace = true }
 alloy-sol-types = { workspace = true }
-hex = { workspace = true }
 privatepoker-common = { workspace = true }
 stylus-sdk = { workspace = true }
 
 [dev-dependencies]
 alloy-primitives = { workspace = true, features = ["sha3-keccak"] }
 tokio = { workspace = true, features = ["full"] }
+stylus-sdk = { workspace = true, features = ["stylus-test"] }
+privatepoker-common = { workspace = true, features = ["test"]}
 eyre = { workspace = true }
 dotenv = { workspace = true }
 
@@ -28,7 +29,7 @@ test-debug = [
 mini-alloc = ["stylus-sdk/mini-alloc"]
 
 [[bin]]
-name = "lobby"
+name = "settler"
 path = "src/main.rs"
 
 [lib]

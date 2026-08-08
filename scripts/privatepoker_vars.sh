@@ -194,16 +194,17 @@ check() {
 all_contract_names() {
     printf '%s\n' \
         account \
+        aggregate_pub_key \
         cashier \
         chips \
         diamond \
         hand \
         lobby \
+        settler \
         spectate \
         table \
         test_usdc \
-        verify_shuffle \
-        verify_unmasking
+        verify_signature
 }
 
 check_all_contracts() {
@@ -506,12 +507,13 @@ print_privatepoker_core_deployment_summary() {
     print_privatepoker_deploy_row lobby PP_LOBBY_FACET "$PP_LOBBY_FACET"
     print_privatepoker_deploy_row table PP_TABLE_FACET "$PP_TABLE_FACET"
     print_privatepoker_deploy_row hand PP_HAND_FACET "$PP_HAND_FACET"
+    print_privatepoker_deploy_row settler PP_SETTLER_FACET "$PP_SETTLER_FACET"
+    print_privatepoker_deploy_row aggregate_pub_key PP_AGGREGATE_PUB_KEY_FACET "$PP_AGGREGATE_PUB_KEY_FACET"
+    print_privatepoker_deploy_row verify_signature PP_VERIFY_SIGNATURE "$PP_VERIFY_SIGNATURE"
     print_privatepoker_deploy_row spectate PP_SPECTATE_FACET "$PP_SPECTATE_FACET"
     print_privatepoker_deploy_row account PP_ACCOUNT_FACET "$PP_ACCOUNT_FACET"
     print_privatepoker_deploy_row cashier PP_CASHIER_FACET "$PP_CASHIER_FACET"
     print_privatepoker_deploy_row chips PP_CHIPS_FACET "$PP_CHIPS_FACET"
-    print_privatepoker_deploy_row verify_shuffle PP_VERIFY_SHUFFLE "$PP_VERIFY_SHUFFLE"
-    print_privatepoker_deploy_row verify_unmasking PP_VERIFY_UNMASKING "$PP_VERIFY_UNMASKING"
     echo
 }
 
@@ -525,6 +527,9 @@ export PP_LOBBY=$PP_LOBBY
 export PP_LOBBY_FACET=$PP_LOBBY_FACET
 export PP_TABLE_FACET=$PP_TABLE_FACET
 export PP_HAND_FACET=$PP_HAND_FACET
+export PP_SETTLER_FACET=$PP_SETTLER_FACET
+export PP_AGGREGATE_PUB_KEY_FACET=$PP_AGGREGATE_PUB_KEY_FACET
+export PP_VERIFY_SIGNATURE=$PP_VERIFY_SIGNATURE
 export PP_SPECTATE_FACET=$PP_SPECTATE_FACET
 export PP_ACCOUNT=$PP_ACCOUNT
 export PP_ACCOUNT_FACET=$PP_ACCOUNT_FACET
@@ -532,8 +537,6 @@ export PP_CHIPS=$PP_CHIPS
 export PP_CHIPS_FACET=$PP_CHIPS_FACET
 export PP_CASHIER=$PP_CASHIER
 export PP_CASHIER_FACET=$PP_CASHIER_FACET
-export PP_VERIFY_SHUFFLE=$PP_VERIFY_SHUFFLE
-export PP_VERIFY_UNMASKING=$PP_VERIFY_UNMASKING
 EOF
 }
 
@@ -577,16 +580,19 @@ deploy_privatepoker_core() {
     PP_HAND_FACET=$(capture_deployment deploy hand) || return 1
     export PP_HAND_FACET
 
+    PP_VERIFY_SIGNATURE=$(capture_deployment deploy verify_signature) || return 1
+    export PP_VERIFY_SIGNATURE
+
+    PP_SETTLER_FACET=$(capture_deployment deploy settler) || return 1
+    export PP_SETTLER_FACET
+
+    PP_AGGREGATE_PUB_KEY_FACET=$(capture_deployment deploy aggregate_pub_key) || return 1
+    export PP_AGGREGATE_PUB_KEY_FACET
+
     PP_SPECTATE_FACET=$(capture_deployment deploy spectate) || return 1
     export PP_SPECTATE_FACET
 
-    PP_VERIFY_SHUFFLE=$(capture_deployment deploy verify_shuffle) || return 1
-    export PP_VERIFY_SHUFFLE
-
-    PP_VERIFY_UNMASKING=$(capture_deployment deploy verify_unmasking) || return 1
-    export PP_VERIFY_UNMASKING
-
-    PP_LOBBY=$(capture_deployment deploy_constructed diamond 'constructor(address,address,address,address,address,address,address,address,address,address,address)' "$PP_OWNER" "$PP_LOBBY_FACET" "$PP_TABLE_FACET" "$PP_HAND_FACET" "$PP_SPECTATE_FACET" "$PP_ACCOUNT_FACET" "$PP_CASHIER_FACET" "$PP_CHIPS_FACET" "$PP_VERIFY_SHUFFLE" "$PP_VERIFY_UNMASKING" "$PP_USDC") || return 1
+    PP_LOBBY=$(capture_deployment deploy_constructed diamond 'constructor(address,address,address,address,address,address,address,address,address,address,address,address)' "$PP_OWNER" "$PP_LOBBY_FACET" "$PP_TABLE_FACET" "$PP_HAND_FACET" "$PP_SPECTATE_FACET" "$PP_ACCOUNT_FACET" "$PP_CASHIER_FACET" "$PP_CHIPS_FACET" "$PP_SETTLER_FACET" "$PP_AGGREGATE_PUB_KEY_FACET" "$PP_VERIFY_SIGNATURE" "$PP_USDC") || return 1
     export PP_LOBBY
     PP_ACCOUNT=$PP_LOBBY
     PP_CASHIER=$PP_LOBBY

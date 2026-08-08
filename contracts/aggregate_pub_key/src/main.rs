@@ -6,5 +6,5 @@ pub extern "C" fn main() {}
 
 #[cfg(feature = "export-abi")]
 fn main() {
-    verify_shuffle::print_from_args();
+    aggregate_pub_key::print_from_args();
 }

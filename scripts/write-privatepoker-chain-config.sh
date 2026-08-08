@@ -60,17 +60,8 @@ if [ "$chain_key" = "devnode" ]; then
     max_gas_block="{
     privatePoker: {
       default: 5_000_000n,
-    },
-    verifyShuffle: {
-      default: {
-        constant: 10_000_000n,
-        perPlayer: 10_000_000n,
-      },
-    },
-    verifyUnmasking: {
-      default: {
-        constant: 8_000_000n,
-        perPlayer: 4_000_000n,
+      functions: {
+        settleHand: 25_000_000n,
       },
     },
   }"
@@ -97,8 +88,8 @@ export const chainConfig = {
   rpcUrl: '$rpc_url',
   ppdcContractAddress: '${PP_USDC:-}',
   privatePokerContractAddress: '${PP_LOBBY:-}',
-  verifyShuffleContractAddress: '${PP_VERIFY_SHUFFLE:-}',
-  verifyUnmaskingContractAddress: '${PP_VERIFY_UNMASKING:-}',
+  settlerFacetAddress: '${PP_SETTLER_FACET:-}',
+  aggregatePubKeyFacetAddress: '${PP_AGGREGATE_PUB_KEY_FACET:-}',
   maxGas: $max_gas_block,
   pollingInterval: $polling_interval,
   staleTime: $stale_time,
