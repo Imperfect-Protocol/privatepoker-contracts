@@ -1538,6 +1538,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "hash_to_curve"
+version = "0.1.11"
+dependencies = [
+ "alloy-primitives",
+ "alloy-sol-types",
+ "bls12_381",
+ "digest 0.9.0",
+ "dotenv",
+ "eyre",
+ "hex",
+ "pairing",
+ "stylus-sdk",
+ "tokio",
+]
+
+[[package]]
 name = "hashbrown"
 version = "0.14.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3583,13 +3599,8 @@ dependencies = [
  "alloy-primitives",
  "alloy-sol-types",
  "bls12_381",
- "digest 0.9.0",
- "dotenv",
- "eyre",
- "hex",
  "pairing",
  "stylus-sdk",
- "tokio",
 ]
 
 [[package]]

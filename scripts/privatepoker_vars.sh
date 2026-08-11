@@ -199,6 +199,7 @@ all_contract_names() {
         chips \
         diamond \
         hand \
+        hash_to_curve \
         lobby \
         settler \
         spectate \
@@ -509,6 +510,7 @@ print_privatepoker_core_deployment_summary() {
     print_privatepoker_deploy_row hand PP_HAND_FACET "$PP_HAND_FACET"
     print_privatepoker_deploy_row settler PP_SETTLER_FACET "$PP_SETTLER_FACET"
     print_privatepoker_deploy_row aggregate_pub_key PP_AGGREGATE_PUB_KEY_FACET "$PP_AGGREGATE_PUB_KEY_FACET"
+    print_privatepoker_deploy_row hash_to_curve PP_HASH_TO_CURVE "$PP_HASH_TO_CURVE"
     print_privatepoker_deploy_row verify_signature PP_VERIFY_SIGNATURE "$PP_VERIFY_SIGNATURE"
     print_privatepoker_deploy_row spectate PP_SPECTATE_FACET "$PP_SPECTATE_FACET"
     print_privatepoker_deploy_row account PP_ACCOUNT_FACET "$PP_ACCOUNT_FACET"
@@ -529,6 +531,7 @@ export PP_TABLE_FACET=$PP_TABLE_FACET
 export PP_HAND_FACET=$PP_HAND_FACET
 export PP_SETTLER_FACET=$PP_SETTLER_FACET
 export PP_AGGREGATE_PUB_KEY_FACET=$PP_AGGREGATE_PUB_KEY_FACET
+export PP_HASH_TO_CURVE=$PP_HASH_TO_CURVE
 export PP_VERIFY_SIGNATURE=$PP_VERIFY_SIGNATURE
 export PP_SPECTATE_FACET=$PP_SPECTATE_FACET
 export PP_ACCOUNT=$PP_ACCOUNT
@@ -580,7 +583,10 @@ deploy_privatepoker_core() {
     PP_HAND_FACET=$(capture_deployment deploy hand) || return 1
     export PP_HAND_FACET
 
-    PP_VERIFY_SIGNATURE=$(capture_deployment deploy verify_signature) || return 1
+    PP_HASH_TO_CURVE=$(capture_deployment deploy hash_to_curve) || return 1
+    export PP_HASH_TO_CURVE
+
+    PP_VERIFY_SIGNATURE=$(capture_deployment deploy_constructed verify_signature 'constructor(address)' "$PP_HASH_TO_CURVE") || return 1
     export PP_VERIFY_SIGNATURE
 
     PP_SETTLER_FACET=$(capture_deployment deploy settler) || return 1

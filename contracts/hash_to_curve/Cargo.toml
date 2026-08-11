@@ -1,18 +1,23 @@
 [package]
-name = "verify_signature"
+name = "hash_to_curve"
 version = "0.1.11"
 edition = "2021"
-description = "Private Poker Verify Signature"
+description = "Private Poker Hash to Curve"
 
 [dependencies]
 alloy-primitives = { workspace = true }
 alloy-sol-types = { workspace = true }
 bls12_381 = { workspace = true }
+digest = { workspace = true }
+hex = { workspace = true }
 pairing = { workspace = true }
 stylus-sdk = { workspace = true }
 
 [dev-dependencies]
 stylus-sdk = { workspace = true, features = ["stylus-test"] }
+tokio = { workspace = true, features = ["full"] }
+eyre = { workspace = true }
+dotenv = { workspace = true }
 
 [features]
 default = ["mini-alloc"]

@@ -1,226 +1,156 @@
 use alloc::vec::Vec;
 
-use alloy_primitives::{Keccak256, B256};
-use bls12_381::hash_to_curve::{ExpandMsgXmd, HashToCurve};
-use bls12_381::{Bls12, G1Affine, G2Affine, G2Projective, Gt};
-use digest::generic_array::typenum::U64;
-use digest::Output;
-use pairing::{group::Curve, MultiMillerLoop};
+use alloy_primitives::{Address, Bytes as AlloyBytes};
+use alloy_sol_types::{sol, SolCall, SolValue};
+use bls12_381::{Bls12, G1Affine, G2Affine};
+use pairing::{group::Group, MultiMillerLoop};
+use stylus_sdk::{abi::Bytes, prelude::*, storage::StorageAddress};
 
-use stylus_sdk::{abi::Bytes, prelude::*};
+sol! {
+    interface IPrivatePokerHashToCurve {
+        function toCurve(bytes digest) external returns (bytes);
+    }
+}
 
 #[storage]
 #[entrypoint]
-pub struct PrivatePokerVerifySignature;
+pub struct PrivatePokerVerifySignature {
+    hash_to_curve: StorageAddress,
+}
 
 #[public]
 impl PrivatePokerVerifySignature {
+    #[constructor]
+    fn constructor(&mut self, hash_to_curve: Address) -> Result<(), Vec<u8>> {
+        if hash_to_curve == Address::ZERO {
+            return Err(b"HASH_TO_CURVE_ZERO".to_vec());
+        }
+        self.hash_to_curve.set(hash_to_curve);
+        Ok(())
+    }
+
     pub fn verify_signature(
         &mut self,
         digest: Bytes,
         aggregate_public_key: Bytes,
         aggregate_signature: Bytes,
     ) -> Result<bool, Vec<u8>> {
-        if digest.len() != DIGEST_LEN {
-            return Err(b"INVALID_DIGEST_LENGTH")?;
+        if aggregate_public_key.len() != G2AFFINE_COMPRESSED_LEN {
+            return Err(b"INVALID_AGGREGATE_PUBLIC_KEY_LENGTH".to_vec());
         }
-        if aggregate_public_key.len() != G1AFFINE_COMPRESSED_LEN {
-            return Err(b"INVALID_AGGREGATE_PUBLIC_KEY_LENGTH")?;
-        }
-        if aggregate_signature.len() != G2AFFINE_COMPRESSED_LEN {
-            return Err(b"INVALID_AGGREGATE_SIGNATURE_LENGTH")?;
+        if aggregate_signature.len() != G1AFFINE_COMPRESSED_LEN {
+            return Err(b"INVALID_AGGREGATE_SIGNATURE_LENGTH".to_vec());
         }
 
-        Ok(verify(
-            &digest.0,
+        let hashed_message = call_hash_to_curve(self, digest)?;
+        if hashed_message.len() != G1AFFINE_COMPRESSED_LEN {
+            return Err(b"INVALID_HASH_TO_CURVE_LENGTH".to_vec());
+        }
+
+        Ok(verify_inner(
+            &hashed_message,
             &aggregate_public_key.0,
             &aggregate_signature.0,
         ))
     }
 }
 
-pub fn verify(digest: &[u8], aggregate_public_key: &[u8], aggregate_signature: &[u8]) -> bool {
-    let Ok(pk) = make_g1_from_compressed_slice(aggregate_public_key) else {
+pub fn verify_inner(
+    hashed_message: &[u8],
+    aggregate_public_key: &[u8],
+    aggregate_signature: &[u8],
+) -> bool {
+    let Some(h) = make_g1_from_compressed_slice(hashed_message) else {
         return false;
     };
-    let Ok(sig) = make_g2_from_compressed_slice(aggregate_signature) else {
+    let Some(pk) = make_g2_from_compressed_slice(aggregate_public_key) else {
+        return false;
+    };
+    let Some(sig) = make_g1_from_compressed_slice(aggregate_signature) else {
         return false;
     };
 
-    let h = hash_to_curve_2(digest);
-    let h_prepared = h.to_affine().into();
-    let signature_prepared = sig.into();
-    let gen_neg = -G1Affine::generator();
-
-    let product = Bls12::multi_miller_loop(&[(&pk, &h_prepared), (&gen_neg, &signature_prepared)])
-        .final_exponentiation();
-
-    product == Gt::identity()
+    Bls12::multi_miller_loop(&[
+        (&G1Affine::from(sig), &G2Affine::generator().into()),
+        (&G1Affine::from(h), &(-G2Affine::from(pk)).into()),
+    ])
+    .final_exponentiation()
+    .is_identity()
+    .into()
 }
 
-pub const DIGEST_LEN: usize = 32;
+fn call_hash_to_curve(
+    ctx: &mut PrivatePokerVerifySignature,
+    digest: Bytes,
+) -> Result<Vec<u8>, Vec<u8>> {
+    let hash_to_curve = ctx.hash_to_curve.get();
+    if hash_to_curve == Address::ZERO {
+        return Err(b"HASH_TO_CURVE_NOT_SET".to_vec());
+    }
+
+    let call = IPrivatePokerHashToCurve::toCurveCall {
+        digest: digest.0.into(),
+    };
+    let output = ctx
+        .vm()
+        .call(&ctx, hash_to_curve, &call.abi_encode())
+        .map_err(|_| b"HASH_TO_CURVE_CALL_FAILED".to_vec())?;
+    AlloyBytes::abi_decode(&output, true)
+        .map(|bytes| bytes.to_vec())
+        .map_err(|_| b"HASH_TO_CURVE_DECODE_FAILED".to_vec())
+}
+
 pub const G1AFFINE_COMPRESSED_LEN: usize = 48;
 pub const G2AFFINE_COMPRESSED_LEN: usize = 96;
 
-pub fn make_g1_from_compressed_slice(data: &[u8]) -> Result<G1Affine, &'static str> {
+pub fn make_g1_from_compressed_slice(data: &[u8]) -> Option<G1Affine> {
     if data.len() != G1AFFINE_COMPRESSED_LEN {
-        return Err("INVALID_G1_COMPRESSED_LENGTH");
+        return None;
     }
     let mut bytes = [0u8; G1AFFINE_COMPRESSED_LEN];
     bytes.copy_from_slice(data);
-    G1Affine::from_compressed(&bytes)
-        .into_option()
-        .ok_or("G1_DECODE_ERROR")
+    G1Affine::from_compressed(&bytes).into_option()
 }
 
-pub fn make_g2_from_compressed_slice(data: &[u8]) -> Result<G2Affine, &'static str> {
+pub fn make_g2_from_compressed_slice(data: &[u8]) -> Option<G2Affine> {
     if data.len() != G2AFFINE_COMPRESSED_LEN {
-        return Err("INVALID_G2_COMPRESSED_LENGTH");
+        return None;
     }
     let mut bytes = [0u8; G2AFFINE_COMPRESSED_LEN];
     bytes.copy_from_slice(data);
-    G2Affine::from_compressed(&bytes)
-        .into_option()
-        .ok_or("G2_DECODE_ERROR")
-}
-
-
-pub struct Keccak256Hash(Keccak256);
-
-impl digest::BlockInput for Keccak256Hash {
-    type BlockSize = U64;
-}
-
-impl digest::Digest for Keccak256Hash {
-    type OutputSize = U64;
-
-    fn new() -> Self {
-        Self(Keccak256::default())
-    }
-
-    fn output_size() -> usize {
-        B256::len_bytes()
-    }
-
-    fn chain(mut self, data: impl AsRef<[u8]>) -> Self
-    where
-        Self: Sized,
-    {
-        self.0.update(data);
-        self
-    }
-    fn update(&mut self, data: impl AsRef<[u8]>) {
-        self.0.update(data);
-    }
-
-    fn finalize(self) -> Output<Self> {
-        let res = self.0.finalize();
-        let mut arr = digest::generic_array::GenericArray::default();
-        arr.copy_from_slice(&res.0);
-        arr
-    }
-
-    fn reset(&mut self) {
-        unimplemented!()
-    }
-
-    fn digest(_data: &[u8]) -> digest::generic_array::GenericArray<u8, Self::OutputSize> {
-        unimplemented!()
-    }
-
-    fn finalize_reset(&mut self) -> Output<Self> {
-        unimplemented!()
-    }
-}
-
-pub fn hash_to_curve_2(message: &[u8]) -> G2Projective {
-    let cs = b"BLS_SIG_BLS12381G1_XMD:KECCAK-256_SSWU_RO_";
-    <G2Projective as HashToCurve<ExpandMsgXmd<Keccak256Hash>>>::hash_to_curve(message, cs)
+    G2Affine::from_compressed(&bytes).into_option()
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{
-        hash_to_curve_2, make_g1_from_compressed_slice, make_g2_from_compressed_slice, verify,
-        PrivatePokerVerifySignature,
-    };
-    use bls12_381::{G1Affine, G2Affine, G2Projective, Scalar};
+    use super::{make_g1_from_compressed_slice, make_g2_from_compressed_slice, verify_inner};
+    use bls12_381::{G1Affine, G2Affine, Scalar};
     use pairing::group::Curve;
-    use stylus_sdk::abi::Bytes;
-    use stylus_sdk::testing::TestVM;
 
     #[test]
     fn decodes_valid_compressed_points() {
-        assert!(make_g1_from_compressed_slice(&G1Affine::generator().to_compressed()).is_ok());
-        assert!(make_g2_from_compressed_slice(&G2Affine::generator().to_compressed()).is_ok());
+        assert!(make_g1_from_compressed_slice(&G1Affine::generator().to_compressed()).is_some());
+        assert!(make_g2_from_compressed_slice(&G2Affine::generator().to_compressed()).is_some());
     }
 
     #[test]
-    fn hash_to_curve_matches_frontend_fixture() {
-        let mut digest = [0u8; 32];
-        digest[31] = 7;
-        assert!(!bool::from(
-            hash_to_curve_2(&digest).eq(&G2Projective::identity())
-        ));
-        assert_eq!(
-            hex::encode(hash_to_curve_2(&digest).to_affine().to_compressed()),
-            "982e8197ed181571d1fb7c8674a6190dd79ea4ca49206301d9acc81e058a89c68ffb2279ae6a0cd5515e8b82dbf4e72001b4c90ee2ea0a3e3a86867cee118c77eb04c7bae3c6ee2cab7c269bef6c6d5cc24461b8f1724b1da16f368fef6d1818"
-        );
-    }
-
-    #[test]
-    fn verifies_hash_to_curve_signature() {
-        let mut digest = [0u8; 32];
-        digest[31] = 7;
+    fn verifies_crumble_signature_system() {
         let signing_key = Scalar::from(11u64);
-        let public_key = (G1Affine::generator() * signing_key).to_affine();
-        let signature = (hash_to_curve_2(&digest) * signing_key).to_affine();
+        let hashed_message = G1Affine::generator();
+        let public_key = (G2Affine::generator() * signing_key).to_affine();
+        let signature = (hashed_message * signing_key).to_affine();
 
-        assert!(verify(
-            &digest,
+        assert!(verify_inner(
+            &hashed_message.to_compressed(),
             &public_key.to_compressed(),
-            &signature.to_compressed()
+            &signature.to_compressed(),
         ));
 
-        digest[31] = 8;
-        assert!(!verify(
-            &digest,
+        let other_signature = (hashed_message * Scalar::from(13u64)).to_affine();
+        assert!(!verify_inner(
+            &hashed_message.to_compressed(),
             &public_key.to_compressed(),
-            &signature.to_compressed()
+            &other_signature.to_compressed(),
         ));
-    }
-
-    #[test]
-    fn contract_entrypoint_verifies_hash_to_curve_signature() {
-        let vm = TestVM::default();
-        let mut contract = PrivatePokerVerifySignature::from(&vm);
-        let mut digest = [0u8; 32];
-        digest[31] = 7;
-        let signing_key = Scalar::from(11u64);
-        let public_key = (G1Affine::generator() * signing_key).to_affine();
-        let signature = (hash_to_curve_2(&digest) * signing_key).to_affine();
-
-        assert_eq!(
-            contract
-                .verify_signature(
-                    Bytes::from(digest.to_vec()),
-                    Bytes::from(public_key.to_compressed().to_vec()),
-                    Bytes::from(signature.to_compressed().to_vec()),
-                )
-                .unwrap(),
-            true
-        );
-
-        digest[31] = 8;
-        assert_eq!(
-            contract
-                .verify_signature(
-                    Bytes::from(digest.to_vec()),
-                    Bytes::from(public_key.to_compressed().to_vec()),
-                    Bytes::from(signature.to_compressed().to_vec()),
-                )
-                .unwrap(),
-            false
-        );
     }
 }

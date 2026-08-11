@@ -7,13 +7,14 @@ members = [
     "contracts/chips",
     "contracts/diamond",
     "contracts/hand",
+    "contracts/hash_to_curve",
     "contracts/lobby",
     "contracts/settler",
     "contracts/spectate",
     "contracts/table",
     "contracts/test_usdc",
     "contracts/verify_signature",
-    "common"
+    "common",
 ]
 
 [workspace.dependencies]
