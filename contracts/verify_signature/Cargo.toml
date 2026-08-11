@@ -12,10 +12,11 @@ digest = { workspace = true }
 hex = { workspace = true }
 pairing = { workspace = true }
 stylus-sdk = { workspace = true }
-stylus-core = { workspace = true }
+# stylus-core = { workspace = true }
 
 [dev-dependencies]
 alloy-primitives = { workspace = true, features = ["sha3-keccak"] }
+stylus-sdk = { workspace = true, features = ["stylus-test"] }
 tokio = { workspace = true, features = ["full"] }
 eyre = { workspace = true }
 dotenv = { workspace = true }

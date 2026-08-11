@@ -3588,7 +3588,6 @@ dependencies = [
  "eyre",
  "hex",
  "pairing",
- "stylus-core",
  "stylus-sdk",
  "tokio",
 ]

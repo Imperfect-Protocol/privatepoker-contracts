@@ -20,7 +20,7 @@ impl PrivatePokerAggregatePubKey {
         aggregate_public_key: Bytes,
         aggregate_signature: Bytes,
     ) -> Result<(), Vec<u8>> {
-        if aggregate_public_key.len() != G2AFFINE_COMPRESSED_LEN {
+        if aggregate_public_key.len() != G1AFFINE_COMPRESSED_LEN {
             return Err(b"INVALID_AGGREGATE_PUBLIC_KEY_LENGTH")?;
         }
 
@@ -133,7 +133,7 @@ mod tests {
 
     #[test]
     fn aggregate_public_key_digest_binds_lobby_table_and_key() {
-        let aggregate_public_key = Bytes::from(vec![7u8; G2AFFINE_COMPRESSED_LEN]);
+        let aggregate_public_key = Bytes::from(vec![7u8; G1AFFINE_COMPRESSED_LEN]);
         let base = set_table_aggregate_public_key_digest(
             U256::from(1),
             U256::from(2),
@@ -157,7 +157,7 @@ mod tests {
         let changed_key = set_table_aggregate_public_key_digest(
             U256::from(1),
             U256::from(2),
-            Bytes::from(vec![8u8; G2AFFINE_COMPRESSED_LEN]),
+            Bytes::from(vec![8u8; G1AFFINE_COMPRESSED_LEN]),
         );
         assert_ne!(base, changed_key);
     }

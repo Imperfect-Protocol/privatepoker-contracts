@@ -2,13 +2,10 @@ use alloc::vec::Vec;
 
 use alloy_primitives::{Keccak256, B256};
 use bls12_381::hash_to_curve::{ExpandMsgXmd, HashToCurve};
-use bls12_381::{Bls12, G1Affine, G1Projective, G2Affine};
+use bls12_381::{Bls12, G1Affine, G2Affine, G2Projective, Gt};
 use digest::generic_array::typenum::U64;
 use digest::Output;
-use pairing::{
-    group::{Curve, Group},
-    MultiMillerLoop,
-};
+use pairing::{group::Curve, MultiMillerLoop};
 
 use stylus_sdk::{abi::Bytes, prelude::*};
 
@@ -27,14 +24,14 @@ impl PrivatePokerVerifySignature {
         if digest.len() != DIGEST_LEN {
             return Err(b"INVALID_DIGEST_LENGTH")?;
         }
-        if aggregate_public_key.len() != G2AFFINE_COMPRESSED_LEN {
+        if aggregate_public_key.len() != G1AFFINE_COMPRESSED_LEN {
             return Err(b"INVALID_AGGREGATE_PUBLIC_KEY_LENGTH")?;
         }
-        if aggregate_signature.len() != G1AFFINE_COMPRESSED_LEN {
+        if aggregate_signature.len() != G2AFFINE_COMPRESSED_LEN {
             return Err(b"INVALID_AGGREGATE_SIGNATURE_LENGTH")?;
         }
 
-        Ok(verify_signature_inner(
+        Ok(verify(
             &digest.0,
             &aggregate_public_key.0,
             &aggregate_signature.0,
@@ -42,30 +39,23 @@ impl PrivatePokerVerifySignature {
     }
 }
 
-fn verify_signature_inner(
-    digest: &[u8],
-    aggregate_public_key: &[u8],
-    aggregate_signature: &[u8],
-) -> bool {
-    let Ok(pk) = make_g2_from_compressed_slice(aggregate_public_key) else {
+pub fn verify(digest: &[u8], aggregate_public_key: &[u8], aggregate_signature: &[u8]) -> bool {
+    let Ok(pk) = make_g1_from_compressed_slice(aggregate_public_key) else {
         return false;
     };
-    let Ok(sig) = make_g1_from_compressed_slice(aggregate_signature) else {
+    let Ok(sig) = make_g2_from_compressed_slice(aggregate_signature) else {
         return false;
     };
 
-    let h = hash_to_curve(digest).to_affine();
+    let h = hash_to_curve_2(digest);
+    let h_prepared = h.to_affine().into();
+    let signature_prepared = sig.into();
+    let gen_neg = -G1Affine::generator();
 
-    // e(sig, G1) * e(h, -PK) == 1
-    // Using BLS12-381 standard pairing check
-    let is_valid = Bls12::multi_miller_loop(&[
-        (&sig, &G2Affine::generator().into()),
-        (&G1Affine::from(h), &(-pk).into()),
-    ])
-    .final_exponentiation()
-    .is_identity();
+    let product = Bls12::multi_miller_loop(&[(&pk, &h_prepared), (&gen_neg, &signature_prepared)])
+        .final_exponentiation();
 
-    is_valid.into()
+    product == Gt::identity()
 }
 
 pub const DIGEST_LEN: usize = 32;
@@ -93,6 +83,7 @@ pub fn make_g2_from_compressed_slice(data: &[u8]) -> Result<G2Affine, &'static s
         .into_option()
         .ok_or("G2_DECODE_ERROR")
 }
+
 
 pub struct Keccak256Hash(Keccak256);
 
@@ -125,9 +116,6 @@ impl digest::Digest for Keccak256Hash {
     fn finalize(self) -> Output<Self> {
         let res = self.0.finalize();
         let mut arr = digest::generic_array::GenericArray::default();
-        #[cfg(test)]
-        arr[..32].copy_from_slice(&res.0);
-        #[cfg(not(test))]
         arr.copy_from_slice(&res.0);
         arr
     }
@@ -145,19 +133,21 @@ impl digest::Digest for Keccak256Hash {
     }
 }
 
-pub fn hash_to_curve(message: &[u8]) -> G1Projective {
-    let cs = b"BLS_SIG_BLS12381G2_XMD:KECCAK-256_SSWU_RO_";
-    <G1Projective as HashToCurve<ExpandMsgXmd<Keccak256Hash>>>::hash_to_curve(message, cs)
+pub fn hash_to_curve_2(message: &[u8]) -> G2Projective {
+    let cs = b"BLS_SIG_BLS12381G1_XMD:KECCAK-256_SSWU_RO_";
+    <G2Projective as HashToCurve<ExpandMsgXmd<Keccak256Hash>>>::hash_to_curve(message, cs)
 }
 
 #[cfg(test)]
 mod tests {
     use super::{
-        hash_to_curve, make_g1_from_compressed_slice, make_g2_from_compressed_slice,
-        verify_signature_inner,
+        hash_to_curve_2, make_g1_from_compressed_slice, make_g2_from_compressed_slice, verify,
+        PrivatePokerVerifySignature,
     };
-    use bls12_381::{G1Affine, G1Projective, G2Affine, Scalar};
+    use bls12_381::{G1Affine, G2Affine, G2Projective, Scalar};
     use pairing::group::Curve;
+    use stylus_sdk::abi::Bytes;
+    use stylus_sdk::testing::TestVM;
 
     #[test]
     fn decodes_valid_compressed_points() {
@@ -170,11 +160,11 @@ mod tests {
         let mut digest = [0u8; 32];
         digest[31] = 7;
         assert!(!bool::from(
-            hash_to_curve(&digest).eq(&G1Projective::identity())
+            hash_to_curve_2(&digest).eq(&G2Projective::identity())
         ));
         assert_eq!(
-            hex::encode(hash_to_curve(&digest).to_affine().to_compressed()),
-            "b9eac4142eccb8241b24b3d2c3f7c658010e2378d95d492d1a8a8e3b50fae94d6d9bbf80c40b476ea97037004d2c1d04"
+            hex::encode(hash_to_curve_2(&digest).to_affine().to_compressed()),
+            "982e8197ed181571d1fb7c8674a6190dd79ea4ca49206301d9acc81e058a89c68ffb2279ae6a0cd5515e8b82dbf4e72001b4c90ee2ea0a3e3a86867cee118c77eb04c7bae3c6ee2cab7c269bef6c6d5cc24461b8f1724b1da16f368fef6d1818"
         );
     }
 
@@ -183,20 +173,54 @@ mod tests {
         let mut digest = [0u8; 32];
         digest[31] = 7;
         let signing_key = Scalar::from(11u64);
-        let public_key = (G2Affine::generator() * signing_key).to_affine();
-        let signature = (hash_to_curve(&digest) * signing_key).to_affine();
+        let public_key = (G1Affine::generator() * signing_key).to_affine();
+        let signature = (hash_to_curve_2(&digest) * signing_key).to_affine();
 
-        assert!(verify_signature_inner(
+        assert!(verify(
             &digest,
             &public_key.to_compressed(),
             &signature.to_compressed()
         ));
 
         digest[31] = 8;
-        assert!(!verify_signature_inner(
+        assert!(!verify(
             &digest,
             &public_key.to_compressed(),
             &signature.to_compressed()
         ));
+    }
+
+    #[test]
+    fn contract_entrypoint_verifies_hash_to_curve_signature() {
+        let vm = TestVM::default();
+        let mut contract = PrivatePokerVerifySignature::from(&vm);
+        let mut digest = [0u8; 32];
+        digest[31] = 7;
+        let signing_key = Scalar::from(11u64);
+        let public_key = (G1Affine::generator() * signing_key).to_affine();
+        let signature = (hash_to_curve_2(&digest) * signing_key).to_affine();
+
+        assert_eq!(
+            contract
+                .verify_signature(
+                    Bytes::from(digest.to_vec()),
+                    Bytes::from(public_key.to_compressed().to_vec()),
+                    Bytes::from(signature.to_compressed().to_vec()),
+                )
+                .unwrap(),
+            true
+        );
+
+        digest[31] = 8;
+        assert_eq!(
+            contract
+                .verify_signature(
+                    Bytes::from(digest.to_vec()),
+                    Bytes::from(public_key.to_compressed().to_vec()),
+                    Bytes::from(signature.to_compressed().to_vec()),
+                )
+                .unwrap(),
+            false
+        );
     }
 }
