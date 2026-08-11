@@ -70,7 +70,9 @@ contract_send "$PP_LOBBY" 'addLobby(uint256,uint256,uint256,string)' 3 3 0 "Draw
 log_step "Funding requested accounts"
 for account in "$@"; do
     fund_dev_account_usdc "$account"
-    fund_dev_account_eth "$account"
+    if [ "${PP_ENV:-}" = "nitro-devnode" ]; then
+        fund_dev_account_eth "$account"
+    fi
 done
 
 echo

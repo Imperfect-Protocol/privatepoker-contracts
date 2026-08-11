@@ -2,7 +2,9 @@ use alloc::vec::Vec;
 
 use alloy_primitives::{Address, Bytes as AlloyBytes, Keccak256};
 use alloy_sol_types::{SolCall, SolValue};
-use privatepoker_common::lobby::{HandSettled, IPrivatePokerVerifySignature, MainLobby};
+use privatepoker_common::lobby::{
+    HandSettled, IPrivatePokerVerifySignature, MainLobby, PrivatePokerChipsStorage,
+};
 use stylus_sdk::{abi::Bytes, alloy_primitives::U256, prelude::*, stylus_core};
 
 #[storage]
@@ -66,6 +68,7 @@ impl PrivatePokerSettler {
         if checked_sum(&chips_balances)? != table.total_buyin.get() {
             return Err(b"INVALID_CHIPS_BALANCES")?;
         }
+        let game_ended_winner_index = game_ended_winner_index(&chips_balances);
 
         let aggregate_public_key = table.aggregate_public_key.get_bytes().to_vec();
         if aggregate_public_key.is_empty() {
@@ -113,12 +116,45 @@ impl PrivatePokerSettler {
         hand.aggregate_signature
             .set_bytes(aggregate_signature.0.clone());
 
-        for (index, balance) in chips_balances.into_iter().enumerate() {
+        for (index, balance) in chips_balances.iter().enumerate() {
             let mut player = table
                 .players
                 .setter(index)
                 .ok_or_else(|| b"INVALID_PLAYER_INDEX")?;
-            player.chips_remain.set(balance);
+            if game_ended_winner_index.is_some() {
+                player.chips_remain.set(U256::ZERO);
+            } else {
+                player.chips_remain.set(*balance);
+            }
+        }
+
+        if let Some(winner_index) = game_ended_winner_index {
+            let winner = table
+                .players
+                .get(winner_index)
+                .ok_or_else(|| b"INVALID_PLAYER_INDEX")?;
+            let winner_address = winner.address.get();
+            let payout = chips_balances[winner_index];
+            let chip_token = main_lobby.chip_token.get();
+            if chip_token == Address::ZERO {
+                return Err(b"CHIP_TOKEN_NOT_SET")?;
+            }
+
+            let mut chips = PrivatePokerChipsStorage::storage_slot();
+            let escrow_balance = chips.token.balances.get(chip_token);
+            if escrow_balance < payout {
+                return Err(b"CHIP_PAYOUT_FAILED")?;
+            }
+            chips
+                .token
+                .balances
+                .insert(chip_token, escrow_balance - payout);
+            let winner_balance = chips.token.balances.get(winner_address);
+            chips
+                .token
+                .balances
+                .insert(winner_address, winner_balance + payout);
+            table.total_buyin.set(U256::ZERO);
         }
 
         stylus_core::log(
@@ -151,6 +187,20 @@ fn checked_sum(values: &[U256]) -> Result<U256, Vec<u8>> {
         sum.checked_add(*value)
             .ok_or_else(|| b"U256_OVERFLOW".to_vec())
     })
+}
+
+fn game_ended_winner_index(chips_balances: &[U256]) -> Option<usize> {
+    let mut winner_index = None;
+    for (index, balance) in chips_balances.iter().enumerate() {
+        if *balance == U256::ZERO {
+            continue;
+        }
+        if winner_index.is_some() {
+            return None;
+        }
+        winner_index = Some(index);
+    }
+    winner_index
 }
 
 fn settlement_signature_digest(
@@ -204,12 +254,29 @@ pub const G2AFFINE_COMPRESSED_LEN: usize = 96;
 mod tests {
     use crate::privatepoker_settler::settlement_signature_digest;
 
-    use super::checked_sum;
+    use super::{checked_sum, game_ended_winner_index};
     use alloy_primitives::U256;
 
     #[test]
     fn checked_sum_rejects_overflow() {
         assert!(checked_sum(&[U256::MAX, U256::ONE]).is_err());
+    }
+
+    #[test]
+    fn game_ended_requires_exactly_one_remaining_stack() {
+        assert_eq!(
+            game_ended_winner_index(&[U256::from(2000), U256::ZERO]),
+            Some(0)
+        );
+        assert_eq!(
+            game_ended_winner_index(&[U256::ZERO, U256::from(2000)]),
+            Some(1)
+        );
+        assert_eq!(
+            game_ended_winner_index(&[U256::from(1000), U256::from(1000)]),
+            None
+        );
+        assert_eq!(game_ended_winner_index(&[U256::ZERO, U256::ZERO]), None);
     }
 
     #[test]

@@ -258,6 +258,14 @@ impl PrivatePokerAccount {
             account.exists.set(U256::ONE);
             account.player_address.set(player_address);
             accounts.players.push(player_address);
+        } else {
+            let previous_operator = account.operator.get();
+            if previous_operator != Address::ZERO
+                && previous_operator != operator
+                && accounts.operator_players.get(previous_operator) == player_address
+            {
+                accounts.operator_players.delete(previous_operator);
+            }
         }
 
         account.operator.set(operator);

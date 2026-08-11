@@ -227,6 +227,7 @@ sol! {
         uint256 table_buyin;
         uint256 table_player_count;
         uint256 table_total_buyin;
+        uint256 table_current_hand;
         string table_name;
     }
 
@@ -336,7 +337,47 @@ pub fn small_blind_for_buy_in(buy_in: U256) -> U256 {
     }
 }
 
+pub fn clear_table_player(player: &mut TablePlayer) {
+    player.address.erase();
+    player.chips_remain.erase();
+    player.annonce_public_key.erase();
+    player.operator.erase();
+}
+
+pub fn clear_hand(hand: &mut Hand) {
+    hand.pot_size.erase();
+    hand.pot_split.erase();
+    hand.digest.erase();
+    hand.aggregate_signature.erase();
+}
+
 pub fn clear_table(table: &mut Table) {
+    let player_count = table.players.len();
+    for index in 0..player_count {
+        if let Some(player) = table.players.get(index) {
+            let player_address = player.address.get();
+            table.hand_start_ready.delete(player_address);
+            table.public_key_ready.delete(player_address);
+        }
+        if let Some(mut player) = table.players.setter(index) {
+            clear_table_player(&mut player);
+        }
+    }
+
+    let current_hand = table.current_hand.get();
+    let last_hand_to_clear = if current_hand == U256::ZERO {
+        U256::ONE
+    } else {
+        current_hand
+    };
+    let mut hand_id = U256::ONE;
+    while hand_id <= last_hand_to_clear {
+        let mut hand = table.hands.setter(hand_id);
+        clear_hand(&mut hand);
+        table.public_key_ready_count.delete(hand_id);
+        hand_id += U256::ONE;
+    }
+
     table.owner.erase();
     table.id.erase();
     table.flags.erase();

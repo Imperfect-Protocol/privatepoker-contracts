@@ -68,6 +68,7 @@ impl PrivatePokerSpectate {
                     table_buyin: table.buy_in.get(),
                     table_player_count: U256::from(table.players.len()),
                     table_total_buyin: U256::from(table.total_buyin.get()),
+                    table_current_hand: table.current_hand.get(),
                     table_name: table.name.get_string(),
                 }
                 .abi_encode()
@@ -134,6 +135,7 @@ impl PrivatePokerSpectate {
                 table_buyin: table.buy_in.get(),
                 table_player_count: U256::from(num_players),
                 table_total_buyin: U256::from(table.total_buyin.get()),
+                table_current_hand: table.current_hand.get(),
                 table_name: table.name.get_string(),
             },
             players,
