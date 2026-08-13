@@ -45,11 +45,12 @@ impl PrivatePokerHand {
                 .players
                 .get(index)
                 .ok_or_else(|| b"INVALID_PLAYER_INDEX")?;
-            if player.address.get() == sender {
+            if player.address.get() == sender || player.operator.get() == sender {
                 seat_number = Some(index);
                 break;
             }
         }
+
         let seat_number = seat_number.ok_or_else(|| b"SENDER_NOT_SEATED")?;
 
         let ready_marker = table.current_hand.get() + U256::ONE;

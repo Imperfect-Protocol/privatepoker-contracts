@@ -61,7 +61,8 @@ if [ "$chain_key" = "devnode" ]; then
     privatePoker: {
       default: 5_000_000n,
       functions: {
-        settleHand: 25_000_000n,
+        setTableAggregatePublicKey: 10_000_000n,
+        settleHand: 50_000_000n,
       },
     },
   }"
@@ -71,7 +72,15 @@ else
     rpc_url="https://sepolia-rollup.arbitrum.io/rpc"
     polling_interval="6000"
     stale_time="10000"
-    max_gas_block="{}"
+    max_gas_block="{
+    privatePoker: {
+      default: 5_000_000n,
+      functions: {
+        setTableAggregatePublicKey: 10_000_000n,
+        settleHand: 50_000_000n,
+      },
+    },
+  }"
 fi
 
 if [ -n "${PP_HOME:-}" ] && [ -n "${PP_ENV:-}" ]; then
