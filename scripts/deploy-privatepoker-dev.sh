@@ -51,7 +51,7 @@ rm -f "$core_env" "$test_usdc_env"
 unset PP_TEST_USDC PP_USDC PP_LOBBY PP_ACCOUNT PP_CASHIER PP_CHIPS
 unset PP_LOBBY_FACET PP_TABLE_FACET PP_HAND_FACET PP_SPECTATE_FACET
 unset PP_ACCOUNT_FACET PP_CASHIER_FACET PP_CHIPS_FACET
-unset PP_VERIFY_SHUFFLE PP_VERIFY_UNMASKING
+unset PP_SETTLER_FACET PP_AGGREGATE_PUB_KEY_FACET PP_HASH_TO_CURVE PP_VERIFY_SIGNATURE
 
 log_step "Checking every Private Poker contract"
 check_all_contracts
@@ -70,7 +70,9 @@ contract_send "$PP_LOBBY" 'addLobby(uint256,uint256,uint256,string)' 3 3 0 "Draw
 log_step "Funding requested accounts"
 for account in "$@"; do
     fund_dev_account_usdc "$account"
-    fund_dev_account_eth "$account"
+    if [ "${PP_ENV:-}" = "nitro-devnode" ]; then
+        fund_dev_account_eth "$account"
+    fi
 done
 
 echo

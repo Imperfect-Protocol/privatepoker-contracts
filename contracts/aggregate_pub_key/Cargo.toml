@@ -1,25 +1,22 @@
 [package]
-name = "verify_shuffle"
+name = "aggregate_pub_key"
 version = "0.1.11"
 edition = "2021"
-description = "Private Poker Verify Shuffle"
+description = "Private Poker Aggregate Public Key Facet"
 
 [dependencies]
 alloy-primitives = { workspace = true }
 alloy-sol-types = { workspace = true }
-bls12_381 = { workspace = true }
-digest = { workspace = true }
-ff = { workspace = true }
-hex = { workspace = true }
-pairing = { workspace = true }
 privatepoker-common = { workspace = true }
 stylus-sdk = { workspace = true }
+stylus-core = { workspace = true }
 
 [dev-dependencies]
 alloy-primitives = { workspace = true, features = ["sha3-keccak"] }
 tokio = { workspace = true, features = ["full"] }
-eyre = { workspace = true }
 stylus-sdk = { workspace = true, features = ["stylus-test"] }
+privatepoker-common = { workspace = true, features = ["test"]}
+eyre = { workspace = true }
 dotenv = { workspace = true }
 
 [features]
@@ -33,7 +30,7 @@ test-debug = [
 mini-alloc = ["stylus-sdk/mini-alloc"]
 
 [[bin]]
-name = "verify_shuffle"
+name = "aggregate_pub_key"
 path = "src/main.rs"
 
 [lib]

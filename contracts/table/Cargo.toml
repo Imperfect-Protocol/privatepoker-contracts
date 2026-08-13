@@ -15,7 +15,6 @@ stylus-sdk = { workspace = true }
 alloy-primitives = { workspace = true, features = ["sha3-keccak"] }
 tokio = { workspace = true, features = ["full"] }
 eyre = { workspace = true }
-stylus-sdk = { workspace = true, features = ["stylus-test"] }
 dotenv = { workspace = true }
 
 [features]

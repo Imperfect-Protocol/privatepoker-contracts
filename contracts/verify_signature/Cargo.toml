@@ -1,0 +1,30 @@
+[package]
+name = "verify_signature"
+version = "0.1.11"
+edition = "2021"
+description = "Private Poker Verify Signature"
+
+[dependencies]
+alloy-primitives = { workspace = true }
+alloy-sol-types = { workspace = true }
+bls12_381 = { workspace = true }
+pairing = { workspace = true }
+stylus-sdk = { workspace = true }
+
+[dev-dependencies]
+stylus-sdk = { workspace = true, features = ["stylus-test"] }
+
+[features]
+default = ["mini-alloc"]
+export-abi = ["stylus-sdk/export-abi"]
+test-debug = [
+    "stylus-sdk/debug",
+]
+mini-alloc = ["stylus-sdk/mini-alloc"]
+
+[[bin]]
+name = "verify_signature"
+path = "src/main.rs"
+
+[lib]
+crate-type = ["lib", "cdylib"]

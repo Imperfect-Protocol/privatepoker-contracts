@@ -4,6 +4,7 @@
 #[macro_use]
 extern crate alloc;
 
-pub mod privatepoker_verify_shuffle;
+pub mod hash_to_curve;
+pub mod privatepoker_hash_to_curve;
 
-pub use privatepoker_verify_shuffle::*;
+pub use privatepoker_hash_to_curve::*;

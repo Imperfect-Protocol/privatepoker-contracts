@@ -22,17 +22,29 @@ pub struct TablePlayer {
 }
 
 #[storage]
+pub struct Hand {
+    pub pot_size: StorageU256,
+    pub pot_split: StorageVec<StorageU256>,
+    pub digest: StorageBytes,
+    pub aggregate_signature: StorageBytes,
+}
+
+#[storage]
 pub struct Table {
     pub owner: StorageAddress,
     pub id: StorageU256,
     pub flags: StorageU256,
     pub name: StorageString,
     pub buy_in: StorageU256,
+    pub aggregate_public_key: StorageBytes,
     pub players: StorageVec<TablePlayer>,
     pub total_buyin: StorageU256,
     pub current_hand: StorageU256,
+    pub hands: StorageMap<U256, Hand>,
     pub hand_start_ready_count: StorageU256,
     pub hand_start_ready: StorageMap<Address, StorageU256>,
+    pub public_key_ready_count: StorageMap<U256, StorageU256>,
+    pub public_key_ready: StorageMap<Address, StorageU256>,
 }
 
 #[storage]
@@ -66,6 +78,9 @@ pub struct PrivatePokerFacetAddresses {
     pub account: StorageAddress,
     pub cashier: StorageAddress,
     pub chips: StorageAddress,
+    pub settler: StorageAddress,
+    pub aggregate_pub_key: StorageAddress,
+    pub verify_signature: StorageAddress,
 }
 
 #[storage]
@@ -122,6 +137,18 @@ sol! {
 
     interface IPrivatePokerHandFacet {
         function startHand(uint256 lobby_id, uint256 table_id) external;
+    }
+
+    interface IPrivatePokerAggregatePubKeyFacet {
+        function setTableAggregatePublicKey(uint256 lobby_id, uint256 table_id, bytes aggregate_public_key, bytes aggregate_signature) external;
+    }
+
+    interface IPrivatePokerSettlerFacet {
+        function settleHand(uint256 lobby_id, uint256 table_id, uint256 hand_id, uint256 pot_size, uint256[] pot_split, uint256[] chips_balances, bytes digest, bytes aggregate_signature) external;
+    }
+
+    interface IPrivatePokerVerifySignature {
+        function verifySignature(bytes digest, bytes aggregate_public_key, bytes aggregate_signature) external returns (bool);
     }
 
     interface IPrivatePokerSpectateFacet {
@@ -200,6 +227,7 @@ sol! {
         uint256 table_buyin;
         uint256 table_player_count;
         uint256 table_total_buyin;
+        uint256 table_current_hand;
         string table_name;
     }
 
@@ -226,6 +254,8 @@ sol! {
     }
 
     event HandStarted(uint256 lobby_id, uint256 table_id, uint256 seat_number, uint256 remain_count);
+    event TableAggregatePublicKeySet(uint256 lobby_id, uint256 table_id);
+    event HandSettled(uint256 lobby_id, uint256 table_id, uint256 hand_id, bytes digest);
     event ChipTokenSet(address chip_token);
     event ChipsPaidOut(address recipient, uint256 amount);
     event LobbyCreated(uint256 id, string name);
@@ -307,12 +337,53 @@ pub fn small_blind_for_buy_in(buy_in: U256) -> U256 {
     }
 }
 
+pub fn clear_table_player(player: &mut TablePlayer) {
+    player.address.erase();
+    player.chips_remain.erase();
+    player.annonce_public_key.erase();
+    player.operator.erase();
+}
+
+pub fn clear_hand(hand: &mut Hand) {
+    hand.pot_size.erase();
+    hand.pot_split.erase();
+    hand.digest.erase();
+    hand.aggregate_signature.erase();
+}
+
 pub fn clear_table(table: &mut Table) {
+    let player_count = table.players.len();
+    for index in 0..player_count {
+        if let Some(player) = table.players.get(index) {
+            let player_address = player.address.get();
+            table.hand_start_ready.delete(player_address);
+            table.public_key_ready.delete(player_address);
+        }
+        if let Some(mut player) = table.players.setter(index) {
+            clear_table_player(&mut player);
+        }
+    }
+
+    let current_hand = table.current_hand.get();
+    let last_hand_to_clear = if current_hand == U256::ZERO {
+        U256::ONE
+    } else {
+        current_hand
+    };
+    let mut hand_id = U256::ONE;
+    while hand_id <= last_hand_to_clear {
+        let mut hand = table.hands.setter(hand_id);
+        clear_hand(&mut hand);
+        table.public_key_ready_count.delete(hand_id);
+        hand_id += U256::ONE;
+    }
+
     table.owner.erase();
     table.id.erase();
     table.flags.erase();
     table.name.erase();
     table.buy_in.erase();
+    table.aggregate_public_key.erase();
     table.total_buyin.erase();
     table.current_hand.erase();
     table.hand_start_ready_count.erase();

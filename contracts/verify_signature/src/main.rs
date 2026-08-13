@@ -6,5 +6,5 @@ pub extern "C" fn main() {}
 
 #[cfg(feature = "export-abi")]
 fn main() {
-    verify_shuffle::print_from_args();
+    verify_signature::print_from_args();
 }

@@ -41,12 +41,18 @@ impl PrivatePokerTable {
         }
 
         let mut table = lobby.tables.setter(table_id);
+        clear_table(&mut table);
+
         table.owner.set(player_address);
         table.id.set(table_id);
         table.flags.set(num_players);
         table.name.set_str(name.clone());
         table.buy_in.set(buy_in);
         table.total_buyin.set(buy_in);
+
+        table.current_hand.set(U256::ZERO);
+        table.hand_start_ready_count.set(U256::ZERO);
+        table.aggregate_public_key.erase();
 
         let mut new_player = table.players.grow();
         new_player.address.set(player_address);

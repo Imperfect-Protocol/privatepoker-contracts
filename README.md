@@ -96,11 +96,11 @@ This deploys:
 - `PP_LOBBY_FACET`
 - `PP_TABLE_FACET`
 - `PP_HAND_FACET`
+- `PP_SETTLER_FACET`
+- `PP_VERIFY_SIGNATURE`
 - `PP_SPECTATE_FACET`
 - `PP_CHIPS`
 - `PP_CASHIER`
-- `PP_VERIFY_SHUFFLE`
-- `PP_VERIFY_UNMASKING`
 
 It also wires:
 
@@ -161,8 +161,8 @@ cd /privatepoker-contracts
 . ~/some-hidden-location/privatepoker-devenv.sh
 
 ./scripts/check-all-contracts.sh
-./scripts/deploy-privatepoker-test-usdc.sh
-./scripts/deploy-privatepoker.sh
+PP_FORCE_TEST_USDC_DEPLOY=1 ./scripts/deploy-privatepoker-test-usdc.sh
+PP_FORCE_PRIVATEPOKER_DEPLOY=1 ./scripts/deploy-privatepoker.sh
 ./scripts/cast-send.sh "$PP_LOBBY" 'addLobby(uint256,uint256,uint256,string)' 1 1 1 "Texas Holdem"
 ./scripts/fund-test-usdc-to-test-accounts.sh 100000
 ```

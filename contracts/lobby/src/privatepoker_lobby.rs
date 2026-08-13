@@ -43,6 +43,10 @@ impl PrivatePokerLobby {
         }
 
         let mut new_lobby = main_lobby.lobbies.setter(id);
+        if new_lobby.id.get() != U256::ZERO {
+            return Err("LOBBY_ALREADY_EXISTS".into());
+        }
+        new_lobby.table_ids.erase();
         new_lobby.id.set(id);
         new_lobby.game_type.set(game_type);
         new_lobby.flags.set(flags);

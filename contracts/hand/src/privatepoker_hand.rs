@@ -34,6 +34,9 @@ impl PrivatePokerHand {
         if seated_players < num_players {
             return Err(b"TABLE_NOT_FULL")?;
         }
+        if table.aggregate_public_key.get_bytes().is_empty() {
+            return Err(b"TABLE_AGGREGATE_PUBLIC_KEY_NOT_SET")?;
+        }
 
         let mut seat_number = None;
 
@@ -42,11 +45,12 @@ impl PrivatePokerHand {
                 .players
                 .get(index)
                 .ok_or_else(|| b"INVALID_PLAYER_INDEX")?;
-            if player.address.get() == sender {
+            if player.address.get() == sender || player.operator.get() == sender {
                 seat_number = Some(index);
                 break;
             }
         }
+
         let seat_number = seat_number.ok_or_else(|| b"SENDER_NOT_SEATED")?;
 
         let ready_marker = table.current_hand.get() + U256::ONE;

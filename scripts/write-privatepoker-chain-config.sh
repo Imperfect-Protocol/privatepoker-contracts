@@ -57,12 +57,30 @@ if [ "$chain_key" = "devnode" ]; then
     rpc_url="/local-rpc"
     polling_interval="3000"
     stale_time="5000"
+    max_gas_block="{
+    privatePoker: {
+      default: 5_000_000n,
+      functions: {
+        setTableAggregatePublicKey: 10_000_000n,
+        settleHand: 50_000_000n,
+      },
+    },
+  }"
 else
     chain_id="421_614"
     env_chain_id="421614"
     rpc_url="https://sepolia-rollup.arbitrum.io/rpc"
     polling_interval="6000"
     stale_time="10000"
+    max_gas_block="{
+    privatePoker: {
+      default: 5_000_000n,
+      functions: {
+        setTableAggregatePublicKey: 10_000_000n,
+        settleHand: 50_000_000n,
+      },
+    },
+  }"
 fi
 
 if [ -n "${PP_HOME:-}" ] && [ -n "${PP_ENV:-}" ]; then
@@ -77,8 +95,13 @@ export const chainConfig = {
   key: '$chain_key',
   chainId: $chain_id,
   rpcUrl: '$rpc_url',
-  usdcContractAddress: '${PP_USDC:-}',
+  ppdcContractAddress: '${PP_USDC:-}',
   privatePokerContractAddress: '${PP_LOBBY:-}',
+  settlerFacetAddress: '${PP_SETTLER_FACET:-}',
+  aggregatePubKeyFacetAddress: '${PP_AGGREGATE_PUB_KEY_FACET:-}',
+  hashToCurveAddress: '${PP_HASH_TO_CURVE:-}',
+  verifySignatureAddress: '${PP_VERIFY_SIGNATURE:-}',
+  maxGas: $max_gas_block,
   pollingInterval: $polling_interval,
   staleTime: $stale_time,
   lastModified: '20260522T161800Z',
