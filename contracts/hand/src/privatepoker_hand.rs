@@ -1,6 +1,6 @@
 use alloc::vec::Vec;
 
-use privatepoker_common::lobby::{HandStarted, MainLobby};
+use privatepoker_common::{interfaces::HandStarted, lobby::MainLobby};
 use stylus_sdk::{alloy_primitives::U256, prelude::*, stylus_core};
 
 #[storage]
@@ -12,6 +12,7 @@ impl PrivatePokerHand {
     pub fn start_hand(&mut self, lobby_id: U256, table_id: U256) -> Result<(), Vec<u8>> {
         let mut main_lobby = MainLobby::storage_slot();
         let sender = self.vm().msg_sender();
+        let owner = main_lobby.owner.get();
 
         let mut lobby = main_lobby.lobbies.setter(lobby_id);
         if lobby.id.get() != lobby_id {
@@ -39,26 +40,29 @@ impl PrivatePokerHand {
         }
 
         let mut seat_number = None;
+        let mut ready_key = None;
 
         for index in 0..seated_players {
             let player = table
                 .players
                 .get(index)
                 .ok_or_else(|| b"INVALID_PLAYER_INDEX")?;
-            if player.address.get() == sender || player.operator.get() == sender {
+            if player.operator.get() == sender || (sender == owner && index == 0) {
                 seat_number = Some(index);
+                ready_key = Some(player.address.get());
                 break;
             }
         }
 
         let seat_number = seat_number.ok_or_else(|| b"SENDER_NOT_SEATED")?;
+        let ready_key = ready_key.ok_or_else(|| b"SENDER_NOT_SEATED")?;
 
         let ready_marker = table.current_hand.get() + U256::ONE;
-        if table.hand_start_ready.get(sender) == ready_marker {
+        if table.hand_start_ready.get(ready_key) == ready_marker {
             return Err(b"ALREADY_READY")?;
         }
 
-        table.hand_start_ready.insert(sender, ready_marker);
+        table.hand_start_ready.insert(ready_key, ready_marker);
 
         let ready_count = table.hand_start_ready_count.get() + U256::ONE;
         let remain_count = U256::from(num_players) - ready_count;

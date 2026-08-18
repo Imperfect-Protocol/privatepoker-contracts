@@ -1,7 +1,10 @@
 use alloc::{string::String, vec::Vec};
 
 use alloy_primitives::Address;
-use privatepoker_common::lobby::{clear_table, ChipTokenSet, LobbyCreated, MainLobby};
+use privatepoker_common::{
+    interfaces::{ChipTokenSet, LobbyCreated},
+    lobby::{clear_table, MainLobby},
+};
 use stylus_sdk::{alloy_primitives::U256, prelude::*, stylus_core};
 
 #[storage]

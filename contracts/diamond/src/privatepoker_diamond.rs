@@ -4,11 +4,14 @@ use alloy_primitives::Address;
 use alloy_sol_types::SolCall;
 use privatepoker_common::{
     erc20,
-    lobby::{
+    interfaces::{
         IPrivatePokerAccountFacet, IPrivatePokerAggregatePubKeyFacet, IPrivatePokerCashierFacet,
         IPrivatePokerChipsFacet, IPrivatePokerHandFacet, IPrivatePokerLobbyFacet,
-        IPrivatePokerSettlerFacet, IPrivatePokerSpectateFacet, IPrivatePokerTableFacet, MainLobby,
-        PrivatePokerAccountsStorage, PrivatePokerCashierStorage, PrivatePokerChipsStorage,
+        IPrivatePokerSettlerFacet, IPrivatePokerSpectateFacet, IPrivatePokerTableFacet,
+    },
+    lobby::{
+        MainLobby, PrivatePokerAccountsStorage, PrivatePokerCashierStorage,
+        PrivatePokerChipsStorage,
     },
 };
 use stylus_sdk::{prelude::*, ArbResult};

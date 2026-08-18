@@ -2,8 +2,9 @@ use alloc::vec::Vec;
 
 use alloy_primitives::{Address, Keccak256};
 use alloy_sol_types::{SolCall, SolValue};
-use privatepoker_common::lobby::{
-    IPrivatePokerVerifySignature, MainLobby, TableAggregatePublicKeySet,
+use privatepoker_common::{
+    interfaces::{IPrivatePokerVerifySignature, TableAggregatePublicKeySet},
+    lobby::MainLobby,
 };
 use stylus_sdk::{abi::Bytes, alloy_primitives::U256, prelude::*, stylus_core};
 
@@ -26,6 +27,7 @@ impl PrivatePokerAggregatePubKey {
 
         let sender = self.vm().msg_sender();
         let mut main_lobby = MainLobby::storage_slot();
+        let owner = main_lobby.owner.get();
         let mut lobby = main_lobby.lobbies.setter(lobby_id);
         if lobby.id.get() != lobby_id {
             return Err(b"LOBBY_NOT_FOUND")?;
@@ -38,7 +40,7 @@ impl PrivatePokerAggregatePubKey {
         if table.current_hand.get() != U256::ZERO {
             return Err(b"TABLE_ALREADY_STARTED")?;
         }
-        if !sender_can_set_table_key(sender, &table) {
+        if !sender_can_set_table_key(sender, owner, &table) {
             return Err(b"UNAUTHORIZED")?;
         }
 
@@ -69,16 +71,20 @@ impl PrivatePokerAggregatePubKey {
     }
 }
 
-fn sender_can_set_table_key(sender: Address, table: &privatepoker_common::lobby::Table) -> bool {
-    table.owner.get() == sender || sender_is_table_member(sender, table)
+fn sender_can_set_table_key(
+    sender: Address,
+    owner: Address,
+    table: &privatepoker_common::lobby::Table,
+) -> bool {
+    sender == owner || sender_is_table_operator(sender, table)
 }
 
-fn sender_is_table_member(sender: Address, table: &privatepoker_common::lobby::Table) -> bool {
+fn sender_is_table_operator(sender: Address, table: &privatepoker_common::lobby::Table) -> bool {
     for index in 0..table.players.len() {
         let Some(player) = table.players.get(index) else {
             return false;
         };
-        if player.address.get() == sender || player.operator.get() == sender {
+        if player.operator.get() == sender {
             return true;
         }
     }

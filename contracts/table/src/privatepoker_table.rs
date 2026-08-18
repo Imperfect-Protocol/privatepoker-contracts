@@ -3,7 +3,8 @@ use alloc::{string::String, vec::Vec};
 use alloy_primitives::Address;
 use privatepoker_common::{
     erc20,
-    lobby::{clear_table, MainLobby, PlayerJoined, PrivatePokerChipsStorage, TableCreated},
+    interfaces::{PlayerJoined, TableCreated},
+    lobby::{clear_table, MainLobby, PrivatePokerAccountsStorage, PrivatePokerChipsStorage},
 };
 use stylus_sdk::{abi::Bytes, alloy_primitives::U256, prelude::*, stylus_core};
 
@@ -21,15 +22,16 @@ impl PrivatePokerTable {
         buy_in: U256,
         num_players: U256,
         player_address: Address,
-        operator: Address,
         annonce_public_key: Bytes,
     ) -> Result<(), Vec<u8>> {
         if num_players < U256::from(2) {
             return Err(b"INVALID_NUM_PLAYERS")?;
         }
+        let operator = self.operator_for_player(player_address)?;
         let sender = self.vm().msg_sender();
-        if sender != player_address && sender != operator {
-            return Err(b"INVALID_PLAYER_OPERATOR")?;
+        let owner = MainLobby::storage_slot().owner.get();
+        if sender != operator && sender != owner {
+            return Err(b"NOT_OPERATOR_OR_OWNER")?;
         }
         self.collect_chip_buy_in(lobby_id, table_id, player_address, buy_in, false)?;
 
@@ -98,12 +100,13 @@ impl PrivatePokerTable {
         lobby_id: U256,
         table_id: U256,
         player_address: Address,
-        operator: Address,
         annonce_public_key: Bytes,
     ) -> Result<(), Vec<u8>> {
+        let operator = self.operator_for_player(player_address)?;
         let sender = self.vm().msg_sender();
-        if sender != player_address && sender != operator {
-            return Err(b"INVALID_PLAYER_OPERATOR")?;
+        let owner = MainLobby::storage_slot().owner.get();
+        if sender != operator && sender != owner {
+            return Err(b"NOT_OPERATOR_OR_OWNER")?;
         }
         let buy_in = self.get_join_buy_in(lobby_id, table_id)?;
         self.collect_chip_buy_in(lobby_id, table_id, player_address, buy_in, true)?;
@@ -172,8 +175,12 @@ impl PrivatePokerTable {
         }
 
         let table = lobby.tables.getter(table_id);
-        if table.owner.get() != sender && main_lobby.owner.get() != sender {
-            return Err("UNAUTHORIZED".into());
+        let owner = main_lobby.owner.get();
+        if sender != owner {
+            let operator = self.operator_for_player(table.owner.get())?;
+            if sender != operator {
+                return Err("UNAUTHORIZED".into());
+            }
         }
 
         let mut found = false;
@@ -202,6 +209,15 @@ impl PrivatePokerTable {
 }
 
 impl PrivatePokerTable {
+    fn operator_for_player(&self, player_address: Address) -> Result<Address, Vec<u8>> {
+        let accounts = PrivatePokerAccountsStorage::storage_slot();
+        let account = accounts.accounts.get(player_address);
+        if account.exists.get() == U256::ZERO {
+            return Err(b"ACCOUNT_MISSING".to_vec());
+        }
+        Ok(account.operator.get())
+    }
+
     fn get_join_buy_in(&self, lobby_id: U256, table_id: U256) -> Result<U256, Vec<u8>> {
         let main_lobby = MainLobby::storage_slot();
         let lobby = main_lobby.lobbies.getter(lobby_id);

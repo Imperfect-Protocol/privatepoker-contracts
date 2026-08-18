@@ -2,8 +2,9 @@ use alloc::vec::Vec;
 
 use alloy_primitives::{Address, Bytes as AlloyBytes, Keccak256};
 use alloy_sol_types::{SolCall, SolValue};
-use privatepoker_common::lobby::{
-    HandSettled, IPrivatePokerVerifySignature, MainLobby, PrivatePokerChipsStorage,
+use privatepoker_common::{
+    interfaces::{HandSettled, IPrivatePokerVerifySignature},
+    lobby::{MainLobby, PrivatePokerChipsStorage},
 };
 use stylus_sdk::{abi::Bytes, alloy_primitives::U256, prelude::*, stylus_core};
 
@@ -36,6 +37,7 @@ impl PrivatePokerSettler {
 
         let sender = self.vm().msg_sender();
         let mut main_lobby = MainLobby::storage_slot();
+        let owner = main_lobby.owner.get();
         let mut lobby = main_lobby.lobbies.setter(lobby_id);
         if lobby.id.get() != lobby_id {
             return Err(b"LOBBY_NOT_FOUND")?;
@@ -48,7 +50,7 @@ impl PrivatePokerSettler {
         if table.current_hand.get() != hand_id {
             return Err(b"HAND_NOT_CURRENT")?;
         }
-        if !sender_is_table_member(sender, &table) {
+        if sender != owner && !sender_is_table_operator(sender, &table) {
             return Err(b"UNAUTHORIZED")?;
         }
 
@@ -170,12 +172,12 @@ impl PrivatePokerSettler {
     }
 }
 
-fn sender_is_table_member(sender: Address, table: &privatepoker_common::lobby::Table) -> bool {
+fn sender_is_table_operator(sender: Address, table: &privatepoker_common::lobby::Table) -> bool {
     for index in 0..table.players.len() {
         let Some(player) = table.players.get(index) else {
             return false;
         };
-        if player.address.get() == sender || player.operator.get() == sender {
+        if player.operator.get() == sender {
             return true;
         }
     }

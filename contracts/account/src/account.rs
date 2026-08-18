@@ -4,10 +4,8 @@ use alloy_primitives::{Address, U8};
 use alloy_sol_types::{sol, SolCall, SolValue};
 use privatepoker_common::{
     erc20,
-    lobby::{
-        AccountInfo, AccountUpdated, PrivatePokerAccountsStorage, PrivatePokerCashierStorage,
-        PrivatePokerChipsStorage, SubscriptionPaid,
-    },
+    interfaces::{AccountInfo, AccountUpdated, SubscriptionPaid},
+    lobby::{PrivatePokerAccountsStorage, PrivatePokerCashierStorage, PrivatePokerChipsStorage},
 };
 use stylus_sdk::{abi::Bytes, alloy_primitives::U256, prelude::*, stylus_core};
 
@@ -122,7 +120,7 @@ impl PrivatePokerAccount {
         encrypted_profile: Bytes,
         subscription_tier: u8,
     ) -> Result<(), Vec<u8>> {
-        self.require_player_or_operator(player_address, operator)?;
+        self.require_player_or_owner(player_address)?;
         self.require_addresses(player_address, operator)?;
 
         let usdc_amount = self.subscription_price(subscription_tier)?;
@@ -164,30 +162,31 @@ impl PrivatePokerAccount {
     pub fn update_account(
         &mut self,
         player_address: Address,
-        operator: Address,
         annonce_public_key: Bytes,
         encrypted_profile: Bytes,
     ) -> Result<(), Vec<u8>> {
-        self.require_player_or_existing_operator(player_address, operator)?;
-        self.require_addresses(player_address, operator)?;
+        if player_address == Address::ZERO {
+            return Err(b"PLAYER_ZERO".to_vec());
+        }
 
+        let sender = self.vm().msg_sender();
+        let owner = self.owner();
         let mut accounts = PrivatePokerAccountsStorage::storage_slot();
         let mut account = accounts.accounts.setter(player_address);
         if account.exists.get() == U256::ZERO {
             return Err(b"ACCOUNT_MISSING".to_vec());
         }
+        let operator = account.operator.get();
+        if sender != operator && sender != owner {
+            return Err(b"NOT_OPERATOR_OR_OWNER".to_vec());
+        }
 
-        account.operator.set(operator);
         account
             .annonce_public_key
             .set_bytes(annonce_public_key.as_ref());
         account
             .encrypted_profile
             .set_bytes(encrypted_profile.as_ref());
-        accounts
-            .operator_players
-            .setter(operator)
-            .set(player_address);
 
         stylus_core::log(
             self.vm(),
@@ -240,7 +239,9 @@ impl PrivatePokerAccount {
         }
         Ok(accounts.players.get(index).unwrap())
     }
+}
 
+impl PrivatePokerAccount {
     fn write_account(
         &mut self,
         player_address: Address,
@@ -361,29 +362,10 @@ impl PrivatePokerAccount {
         Ok(())
     }
 
-    fn require_player_or_operator(
-        &self,
-        player_address: Address,
-        operator: Address,
-    ) -> Result<(), Vec<u8>> {
+    fn require_player_or_owner(&self, player_address: Address) -> Result<(), Vec<u8>> {
         let sender = self.vm().msg_sender();
-        if sender != player_address && sender != operator {
-            return Err(b"NOT_PLAYER_OR_OPERATOR".to_vec());
-        }
-        Ok(())
-    }
-
-    fn require_player_or_existing_operator(
-        &self,
-        player_address: Address,
-        operator: Address,
-    ) -> Result<(), Vec<u8>> {
-        let sender = self.vm().msg_sender();
-        let accounts = PrivatePokerAccountsStorage::storage_slot();
-        let account = accounts.accounts.get(player_address);
-        let current_operator = account.operator.get();
-        if sender != player_address && sender != operator && sender != current_operator {
-            return Err(b"NOT_PLAYER_OR_OPERATOR".to_vec());
+        if sender != player_address && sender != self.owner() {
+            return Err(b"NOT_PLAYER_OR_OWNER".to_vec());
         }
         Ok(())
     }

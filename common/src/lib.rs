@@ -3,5 +3,6 @@
 extern crate alloc;
 
 pub mod erc20;
+pub mod interfaces;
 pub mod lobby;
 pub mod storage;

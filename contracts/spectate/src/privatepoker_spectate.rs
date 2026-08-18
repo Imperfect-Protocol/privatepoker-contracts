@@ -2,7 +2,10 @@ use alloc::{vec, vec::Vec};
 
 use alloy_primitives::Address;
 use alloy_sol_types::SolValue;
-use privatepoker_common::lobby::{LobbyInfo, MainLobby, TableDetail, TableInfo, TablePlayerInfo};
+use privatepoker_common::{
+    interfaces::{LobbyInfo, TableDetail, TableInfo, TablePlayerInfo},
+    lobby::MainLobby,
+};
 use stylus_sdk::{abi::Bytes, alloy_primitives::U256, prelude::*};
 
 #[storage]

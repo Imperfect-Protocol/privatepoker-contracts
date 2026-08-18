@@ -16,9 +16,7 @@ impl StorageSlot {
     #[must_use]
     pub fn get_slot<ST: StorageType>(slot: impl Into<U256>) -> ST {
         #[cfg(not(any(target_arch = "wasm32", feature = "export-abi")))]
-        let host = VM {
-            host: alloc::boxed::Box::new(stylus_sdk::host::WasmVM {}),
-        };
+        let host = VM(stylus_sdk::host::WasmVM {});
 
         #[cfg(any(target_arch = "wasm32", feature = "export-abi"))]
         let host = VM(stylus_sdk::host::WasmVM {});
