@@ -4,6 +4,7 @@ use alloy_primitives::{Address, Bytes as AlloyBytes};
 use alloy_sol_types::{sol, SolCall, SolValue};
 use bls12_381::{Bls12, G1Affine, G2Affine};
 use pairing::{group::Group, MultiMillerLoop};
+use privatepoker_common::calls::ContractCalls;
 use stylus_sdk::{abi::Bytes, prelude::*, storage::StorageAddress};
 
 sol! {
@@ -91,10 +92,11 @@ fn call_hash_to_curve(
     let call = IPrivatePokerHashToCurve::toCurveCall {
         digest: digest.0.into(),
     };
-    let output = ctx
-        .vm()
-        .call(&ctx, hash_to_curve, &call.abi_encode())
-        .map_err(|_| b"HASH_TO_CURVE_CALL_FAILED".to_vec())?;
+    let output = ctx.call_bytes(
+        hash_to_curve,
+        &call.abi_encode(),
+        b"HASH_TO_CURVE_CALL_FAILED",
+    )?;
     AlloyBytes::abi_decode(&output, true)
         .map(|bytes| bytes.to_vec())
         .map_err(|_| b"HASH_TO_CURVE_DECODE_FAILED".to_vec())

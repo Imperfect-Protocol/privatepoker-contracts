@@ -3600,6 +3600,7 @@ dependencies = [
  "alloy-sol-types",
  "bls12_381",
  "pairing",
+ "privatepoker-common",
  "stylus-sdk",
 ]
 

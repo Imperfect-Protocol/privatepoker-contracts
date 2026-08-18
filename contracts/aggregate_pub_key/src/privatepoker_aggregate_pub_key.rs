@@ -1,10 +1,12 @@
 use alloc::vec::Vec;
 
-use alloy_primitives::{Address, Keccak256};
-use alloy_sol_types::{SolCall, SolValue};
+use alloy_primitives::Address;
+use alloy_sol_types::SolCall;
 use privatepoker_common::{
+    calls::ContractCalls,
     interfaces::{IPrivatePokerVerifySignature, TableAggregatePublicKeySet},
-    lobby::MainLobby,
+    lobby::{MainLobby, PrivatePokerDiamond},
+    poker::{set_table_aggregate_public_key_digest, G2AFFINE_COMPRESSED_LEN},
 };
 use stylus_sdk::{abi::Bytes, alloy_primitives::U256, prelude::*, stylus_core};
 
@@ -40,11 +42,11 @@ impl PrivatePokerAggregatePubKey {
         if table.current_hand.get() != U256::ZERO {
             return Err(b"TABLE_ALREADY_STARTED")?;
         }
-        if !sender_can_set_table_key(sender, owner, &table) {
+        if sender != owner && !table.has_operator(sender) {
             return Err(b"UNAUTHORIZED")?;
         }
 
-        let verify_signature = main_lobby.facets.verify_signature.get();
+        let verify_signature = PrivatePokerDiamond::storage_slot().verify_signature.get();
         if verify_signature == Address::ZERO {
             return Err(b"VERIFY_SIGNATURE_NOT_SET")?;
         }
@@ -57,10 +59,9 @@ impl PrivatePokerAggregatePubKey {
             aggregate_public_key: aggregate_public_key.0.clone().into(),
             aggregate_signature: aggregate_signature.0.clone().into(),
         };
-        call_bool(
-            self,
+        self.call_bool(
             verify_signature,
-            verify.abi_encode(),
+            &verify.abi_encode(),
             b"INVALID_AGGREGATE_SIGNATURE",
         )?;
 
@@ -71,64 +72,15 @@ impl PrivatePokerAggregatePubKey {
     }
 }
 
-fn sender_can_set_table_key(
-    sender: Address,
-    owner: Address,
-    table: &privatepoker_common::lobby::Table,
-) -> bool {
-    sender == owner || sender_is_table_operator(sender, table)
-}
-
-fn sender_is_table_operator(sender: Address, table: &privatepoker_common::lobby::Table) -> bool {
-    for index in 0..table.players.len() {
-        let Some(player) = table.players.get(index) else {
-            return false;
-        };
-        if player.operator.get() == sender {
-            return true;
-        }
-    }
-    false
-}
-
-pub fn set_table_aggregate_public_key_digest(
-    lobby_id: U256,
-    table_id: U256,
-    aggregate_public_key: Bytes,
-) -> [u8; 32] {
-    let encoded = (lobby_id, table_id, aggregate_public_key).abi_encode();
-    let mut k = Keccak256::new();
-    k.update(encoded);
-    k.finalize().0
-}
-
-fn call_bool(
-    ctx: &mut PrivatePokerAggregatePubKey,
-    to: Address,
-    calldata: Vec<u8>,
-    err: &[u8],
-) -> Result<(), Vec<u8>> {
-    let output = ctx
-        .vm()
-        .call(&ctx, to, &calldata)
-        .map_err(|_| err.to_vec())?;
-    let ok = bool::abi_decode(&output, true).map_err(|_| err.to_vec())?;
-    if ok {
-        Ok(())
-    } else {
-        Err(err.to_vec())
-    }
-}
-
 pub const G1AFFINE_COMPRESSED_LEN: usize = 48;
-pub const G2AFFINE_COMPRESSED_LEN: usize = 96;
 
 #[cfg(test)]
 mod tests {
-    use super::{
-        set_table_aggregate_public_key_digest, G1AFFINE_COMPRESSED_LEN, G2AFFINE_COMPRESSED_LEN,
-    };
+    use super::G1AFFINE_COMPRESSED_LEN;
     use alloy_primitives::U256;
+    use privatepoker_common::poker::{
+        set_table_aggregate_public_key_digest, G2AFFINE_COMPRESSED_LEN,
+    };
     use stylus_sdk::abi::Bytes;
 
     #[test]

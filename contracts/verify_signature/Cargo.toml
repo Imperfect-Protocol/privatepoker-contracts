@@ -9,14 +9,16 @@ alloy-primitives = { workspace = true }
 alloy-sol-types = { workspace = true }
 bls12_381 = { workspace = true }
 pairing = { workspace = true }
+privatepoker-common = { workspace = true }
 stylus-sdk = { workspace = true }
 
 [dev-dependencies]
+privatepoker-common = { workspace = true, features = ["test"] }
 stylus-sdk = { workspace = true, features = ["stylus-test"] }
 
 [features]
 default = ["mini-alloc"]
-export-abi = ["stylus-sdk/export-abi"]
+export-abi = ["stylus-sdk/export-abi", "privatepoker-common/export-abi"]
 test-debug = [
     "stylus-sdk/debug",
 ]

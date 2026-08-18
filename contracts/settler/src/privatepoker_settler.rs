@@ -1,10 +1,15 @@
 use alloc::vec::Vec;
 
-use alloy_primitives::{Address, Bytes as AlloyBytes, Keccak256};
-use alloy_sol_types::{SolCall, SolValue};
+use alloy_primitives::Address;
+use alloy_sol_types::SolCall;
 use privatepoker_common::{
+    calls::ContractCalls,
     interfaces::{HandSettled, IPrivatePokerVerifySignature},
-    lobby::{MainLobby, PrivatePokerChipsStorage},
+    lobby::{MainLobby, PrivatePokerChipsStorage, PrivatePokerDiamond},
+    poker::{
+        checked_sum, game_ended_winner_index, settlement_signature_digest, DIGEST_LEN,
+        G1AFFINE_COMPRESSED_LEN,
+    },
 };
 use stylus_sdk::{abi::Bytes, alloy_primitives::U256, prelude::*, stylus_core};
 
@@ -50,7 +55,7 @@ impl PrivatePokerSettler {
         if table.current_hand.get() != hand_id {
             return Err(b"HAND_NOT_CURRENT")?;
         }
-        if sender != owner && !sender_is_table_operator(sender, &table) {
+        if sender != owner && !table.has_operator(sender) {
             return Err(b"UNAUTHORIZED")?;
         }
 
@@ -76,7 +81,7 @@ impl PrivatePokerSettler {
         if aggregate_public_key.is_empty() {
             return Err(b"TABLE_AGGREGATE_PUBLIC_KEY_NOT_SET")?;
         }
-        let verify_signature = main_lobby.facets.verify_signature.get();
+        let verify_signature = PrivatePokerDiamond::storage_slot().verify_signature.get();
         if verify_signature == Address::ZERO {
             return Err(b"VERIFY_SIGNATURE_NOT_SET")?;
         }
@@ -95,10 +100,9 @@ impl PrivatePokerSettler {
             aggregate_public_key: aggregate_public_key.clone().into(),
             aggregate_signature: aggregate_signature.0.clone().into(),
         };
-        call_bool(
-            self,
+        self.call_bool(
             verify_signature,
-            verify.abi_encode(),
+            &verify.abi_encode(),
             b"INVALID_AGGREGATE_SIGNATURE",
         )?;
 
@@ -172,92 +176,12 @@ impl PrivatePokerSettler {
     }
 }
 
-fn sender_is_table_operator(sender: Address, table: &privatepoker_common::lobby::Table) -> bool {
-    for index in 0..table.players.len() {
-        let Some(player) = table.players.get(index) else {
-            return false;
-        };
-        if player.operator.get() == sender {
-            return true;
-        }
-    }
-    false
-}
-
-fn checked_sum(values: &[U256]) -> Result<U256, Vec<u8>> {
-    values.iter().try_fold(U256::ZERO, |sum, value| {
-        sum.checked_add(*value)
-            .ok_or_else(|| b"U256_OVERFLOW".to_vec())
-    })
-}
-
-fn game_ended_winner_index(chips_balances: &[U256]) -> Option<usize> {
-    let mut winner_index = None;
-    for (index, balance) in chips_balances.iter().enumerate() {
-        if *balance == U256::ZERO {
-            continue;
-        }
-        if winner_index.is_some() {
-            return None;
-        }
-        winner_index = Some(index);
-    }
-    winner_index
-}
-
-fn settlement_signature_digest(
-    lobby_id: U256,
-    table_id: U256,
-    hand_id: U256,
-    pot_size: U256,
-    pot_split: &[U256],
-    chips_balances: &[U256],
-    digest: &[u8],
-) -> [u8; 32] {
-    let encoded = (
-        lobby_id,
-        table_id,
-        hand_id,
-        pot_size,
-        pot_split.to_vec(),
-        chips_balances.to_vec(),
-        AlloyBytes::copy_from_slice(digest),
-    )
-        .abi_encode();
-
-    let mut k = Keccak256::new();
-    k.update(encoded);
-    k.finalize().0
-}
-
-fn call_bool(
-    ctx: &mut PrivatePokerSettler,
-    to: Address,
-    calldata: Vec<u8>,
-    err: &[u8],
-) -> Result<(), Vec<u8>> {
-    let output = ctx
-        .vm()
-        .call(&ctx, to, &calldata)
-        .map_err(|_| err.to_vec())?;
-    let ok = bool::abi_decode(&output, true).map_err(|_| err.to_vec())?;
-    if ok {
-        Ok(())
-    } else {
-        Err(err.to_vec())
-    }
-}
-
-pub const DIGEST_LEN: usize = 32;
-pub const G1AFFINE_COMPRESSED_LEN: usize = 48;
-pub const G2AFFINE_COMPRESSED_LEN: usize = 96;
-
 #[cfg(test)]
 mod tests {
-    use crate::privatepoker_settler::settlement_signature_digest;
-
-    use super::{checked_sum, game_ended_winner_index};
     use alloy_primitives::U256;
+    use privatepoker_common::poker::{
+        checked_sum, game_ended_winner_index, settlement_signature_digest,
+    };
 
     #[test]
     fn checked_sum_rejects_overflow() {

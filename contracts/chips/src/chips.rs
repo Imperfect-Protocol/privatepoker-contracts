@@ -97,9 +97,12 @@ impl Chips {
 
     pub fn approve(&mut self, spender: Address, value: U256) -> Result<bool, Vec<u8>> {
         let sender = self.vm().msg_sender();
-        let owner = self.owner_for_sender(sender);
+        let accounts = PrivatePokerAccountsStorage::storage_slot();
+        let owner = accounts.owner_for_sender(sender);
         self.require_diamond(spender)?;
-        self.require_sender_is_owner_or_operator(sender, owner)?;
+        if !accounts.is_owner_or_operator(sender, owner) {
+            return Err(b"NOT_OWNER_OR_OPERATOR".to_vec());
+        }
 
         let mut chips = PrivatePokerChipsStorage::storage_slot();
         erc20::approve(&mut chips.token, owner, spender, value);
@@ -116,7 +119,7 @@ impl Chips {
 
     pub fn transfer(&mut self, to: Address, value: U256) -> Result<bool, Vec<u8>> {
         let sender = self.vm().msg_sender();
-        let from = self.owner_for_sender(sender);
+        let from = PrivatePokerAccountsStorage::storage_slot().owner_for_sender(sender);
         self.require_transfer_allowed(sender, from, to)?;
 
         let mut chips = PrivatePokerChipsStorage::storage_slot();
@@ -192,33 +195,6 @@ impl Chips {
         Ok(())
     }
 
-    fn owner_for_sender(&self, sender: Address) -> Address {
-        let accounts = PrivatePokerAccountsStorage::storage_slot();
-        let player = accounts.operator_players.get(sender);
-        if player == Address::ZERO {
-            sender
-        } else {
-            player
-        }
-    }
-
-    fn require_sender_is_owner_or_operator(
-        &self,
-        sender: Address,
-        owner: Address,
-    ) -> Result<(), Vec<u8>> {
-        if sender == owner {
-            return Ok(());
-        }
-
-        let accounts = PrivatePokerAccountsStorage::storage_slot();
-        if accounts.operator_players.get(sender) == owner {
-            return Ok(());
-        }
-
-        Err(b"NOT_OWNER_OR_OPERATOR".to_vec())
-    }
-
     fn require_transfer_allowed(
         &self,
         spender: Address,
@@ -229,7 +205,9 @@ impl Chips {
         let chips = PrivatePokerChipsStorage::storage_slot();
 
         let owner_to_diamond = spender == from && to == diamond;
-        let operator_to_diamond = self.owner_for_sender(spender) == from && to == diamond;
+        let operator_to_diamond =
+            PrivatePokerAccountsStorage::storage_slot().owner_for_sender(spender) == from
+                && to == diamond;
         let diamond_pull_buyin = spender == diamond && to == diamond;
         let diamond_payout = spender == diamond && from == diamond;
 

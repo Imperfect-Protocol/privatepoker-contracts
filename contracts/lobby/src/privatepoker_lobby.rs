@@ -3,7 +3,7 @@ use alloc::{string::String, vec::Vec};
 use alloy_primitives::Address;
 use privatepoker_common::{
     interfaces::{ChipTokenSet, LobbyCreated},
-    lobby::{clear_table, MainLobby},
+    lobby::MainLobby,
 };
 use stylus_sdk::{alloy_primitives::U256, prelude::*, stylus_core};
 
@@ -92,7 +92,7 @@ impl PrivatePokerLobby {
         for i in 0..len {
             let table_id = lobby.table_ids.get(i).unwrap();
             let mut table = lobby.tables.setter(table_id);
-            clear_table(&mut table);
+            table.clear();
         }
 
         lobby.id.erase();

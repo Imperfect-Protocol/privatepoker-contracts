@@ -1,8 +1,9 @@
 use alloc::{vec, vec::Vec};
 
-use alloy_primitives::{Address, U8};
+use alloy_primitives::Address;
 use alloy_sol_types::{sol, SolCall, SolValue};
 use privatepoker_common::{
+    calls::ContractCalls,
     erc20,
     interfaces::{AccountInfo, AccountUpdated, SubscriptionPaid},
     lobby::{PrivatePokerAccountsStorage, PrivatePokerCashierStorage, PrivatePokerChipsStorage},
@@ -134,16 +135,24 @@ impl PrivatePokerAccount {
             usdc_amount,
             chips_amount,
         )?;
-        self.write_account(
+        let mut accounts = PrivatePokerAccountsStorage::storage_slot();
+        accounts.write_account(
             player_address,
             operator,
-            annonce_public_key,
-            encrypted_profile,
+            annonce_public_key.as_ref(),
+            encrypted_profile.as_ref(),
             subscription_tier,
             paid_at,
             expires_at,
         );
 
+        stylus_core::log(
+            self.vm(),
+            AccountUpdated {
+                player_address,
+                operator,
+            },
+        );
         stylus_core::log(
             self.vm(),
             SubscriptionPaid {
@@ -172,21 +181,16 @@ impl PrivatePokerAccount {
         let sender = self.vm().msg_sender();
         let owner = self.owner();
         let mut accounts = PrivatePokerAccountsStorage::storage_slot();
-        let mut account = accounts.accounts.setter(player_address);
-        if account.exists.get() == U256::ZERO {
-            return Err(b"ACCOUNT_MISSING".to_vec());
-        }
-        let operator = account.operator.get();
+        let operator = accounts.operator_for_player(player_address)?;
         if sender != operator && sender != owner {
             return Err(b"NOT_OPERATOR_OR_OWNER".to_vec());
         }
 
-        account
-            .annonce_public_key
-            .set_bytes(annonce_public_key.as_ref());
-        account
-            .encrypted_profile
-            .set_bytes(encrypted_profile.as_ref());
+        accounts.update_account_profile(
+            player_address,
+            annonce_public_key.as_ref(),
+            encrypted_profile.as_ref(),
+        )?;
 
         stylus_core::log(
             self.vm(),
@@ -242,57 +246,6 @@ impl PrivatePokerAccount {
 }
 
 impl PrivatePokerAccount {
-    fn write_account(
-        &mut self,
-        player_address: Address,
-        operator: Address,
-        annonce_public_key: Bytes,
-        encrypted_profile: Bytes,
-        subscription_tier: u8,
-        paid_at: U256,
-        expires_at: U256,
-    ) {
-        let mut accounts = PrivatePokerAccountsStorage::storage_slot();
-        let mut account = accounts.accounts.setter(player_address);
-        let is_new = account.exists.get() == U256::ZERO;
-        if is_new {
-            account.exists.set(U256::ONE);
-            account.player_address.set(player_address);
-            accounts.players.push(player_address);
-        } else {
-            let previous_operator = account.operator.get();
-            if previous_operator != Address::ZERO
-                && previous_operator != operator
-                && accounts.operator_players.get(previous_operator) == player_address
-            {
-                accounts.operator_players.delete(previous_operator);
-            }
-        }
-
-        account.operator.set(operator);
-        account
-            .annonce_public_key
-            .set_bytes(annonce_public_key.as_ref());
-        account
-            .encrypted_profile
-            .set_bytes(encrypted_profile.as_ref());
-        account.subscription_tier.set(U8::from(subscription_tier));
-        account.subscription_paid_at.set(paid_at);
-        account.subscription_expires_at.set(expires_at);
-        accounts
-            .operator_players
-            .setter(operator)
-            .set(player_address);
-
-        stylus_core::log(
-            self.vm(),
-            AccountUpdated {
-                player_address,
-                operator,
-            },
-        );
-    }
-
     fn deposit_subscription(
         &mut self,
         payer: Address,
@@ -323,7 +276,7 @@ impl PrivatePokerAccount {
             .accounted_assets
             .get();
         let balance = IERC20Like::balanceOfCall { account: diamond };
-        let balance = call_u256(self, usdc, balance.abi_encode(), b"USDC_BALANCE_FAILED")?;
+        let balance = self.call_u256(usdc, &balance.abi_encode(), b"USDC_BALANCE_FAILED")?;
         if balance < accounted_assets + assets {
             return Err(b"USDC_NOT_RECEIVED".to_vec());
         }
@@ -369,17 +322,4 @@ impl PrivatePokerAccount {
         }
         Ok(())
     }
-}
-
-fn call_u256(
-    ctx: &mut PrivatePokerAccount,
-    to: Address,
-    calldata: Vec<u8>,
-    err: &[u8],
-) -> Result<U256, Vec<u8>> {
-    let output = ctx
-        .vm()
-        .call(&ctx, to, &calldata)
-        .map_err(|_| err.to_vec())?;
-    U256::abi_decode(&output, true).map_err(|_| err.to_vec())
 }
