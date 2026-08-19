@@ -46,7 +46,7 @@ impl PrivatePokerTable {
         let mut table = lobby.tables.setter(table_id);
         table.clear();
 
-        table.owner.set(player_address);
+        table.created_by.set(player_address);
         table.id.set(table_id);
         table.flags.set(num_players);
         table.name.set_str(name.clone());
@@ -63,7 +63,7 @@ impl PrivatePokerTable {
         new_player.annonce_public_key.set_bytes(annonce_public_key);
         new_player.operator.set(operator);
 
-        lobby.table_ids.push(table_id);
+        lobby.add_open_table(table_id);
 
         let total_players = lobby.total_players.get();
         lobby.total_players.set(total_players + U256::ONE);
@@ -144,6 +144,7 @@ impl PrivatePokerTable {
 
         let current_total_buyin = table.total_buyin.get();
         table.total_buyin.set(current_total_buyin + buy_in);
+        let table_is_full = required_players > 0 && table.players.len() >= required_players;
 
         let lobby_volume = lobby.total_volume.get();
         lobby.total_volume.set(lobby_volume + buy_in);
@@ -153,6 +154,10 @@ impl PrivatePokerTable {
 
         let mut player_tables = main_lobby.player_tables.setter(player_address);
         player_tables.grow().set(table_id);
+
+        if table_is_full {
+            lobby.mark_table_running(table_id);
+        }
 
         stylus_core::log(
             self.vm(),
@@ -180,27 +185,13 @@ impl PrivatePokerTable {
         let owner = main_lobby.owner.get();
         if sender != owner {
             let operator = PrivatePokerAccountsStorage::storage_slot()
-                .operator_for_player(table.owner.get())?;
+                .operator_for_player(table.created_by.get())?;
             if sender != operator {
                 return Err("UNAUTHORIZED".into());
             }
         }
 
-        let mut found = false;
-        let len = lobby.table_ids.len();
-        for i in 0..len {
-            if lobby.table_ids.get(i).unwrap() == table_id {
-                if i < len - 1 {
-                    let last_val = lobby.table_ids.get(len - 1).unwrap();
-                    lobby.table_ids.setter(i).unwrap().set(last_val);
-                }
-                lobby.table_ids.pop();
-                found = true;
-                break;
-            }
-        }
-
-        if !found {
+        if !lobby.remove_table_id(table_id) {
             return Err("TABLE_NOT_FOUND".into());
         }
 

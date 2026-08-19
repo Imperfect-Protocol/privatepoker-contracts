@@ -98,18 +98,15 @@ impl Chips {
     pub fn approve(&mut self, spender: Address, value: U256) -> Result<bool, Vec<u8>> {
         let sender = self.vm().msg_sender();
         let accounts = PrivatePokerAccountsStorage::storage_slot();
-        let owner = accounts.owner_for_sender(sender);
+        let player = accounts.player_for_sender(sender);
         self.require_diamond(spender)?;
-        if !accounts.is_owner_or_operator(sender, owner) {
-            return Err(b"NOT_OWNER_OR_OPERATOR".to_vec());
-        }
 
         let mut chips = PrivatePokerChipsStorage::storage_slot();
-        erc20::approve(&mut chips.token, owner, spender, value);
+        erc20::approve(&mut chips.token, player, spender, value);
         stylus_core::log(
             self.vm(),
             erc20::Approval {
-                owner,
+                owner: player,
                 spender,
                 value,
             },
@@ -119,7 +116,7 @@ impl Chips {
 
     pub fn transfer(&mut self, to: Address, value: U256) -> Result<bool, Vec<u8>> {
         let sender = self.vm().msg_sender();
-        let from = PrivatePokerAccountsStorage::storage_slot().owner_for_sender(sender);
+        let from = PrivatePokerAccountsStorage::storage_slot().player_for_sender(sender);
         self.require_transfer_allowed(sender, from, to)?;
 
         let mut chips = PrivatePokerChipsStorage::storage_slot();
@@ -204,14 +201,14 @@ impl Chips {
         let diamond = self.diamond();
         let chips = PrivatePokerChipsStorage::storage_slot();
 
-        let owner_to_diamond = spender == from && to == diamond;
+        let player_to_diamond = spender == from && to == diamond;
         let operator_to_diamond =
-            PrivatePokerAccountsStorage::storage_slot().owner_for_sender(spender) == from
+            PrivatePokerAccountsStorage::storage_slot().player_for_sender(spender) == from
                 && to == diamond;
         let diamond_pull_buyin = spender == diamond && to == diamond;
         let diamond_payout = spender == diamond && from == diamond;
 
-        if owner_to_diamond || operator_to_diamond || diamond_pull_buyin || diamond_payout {
+        if player_to_diamond || operator_to_diamond || diamond_pull_buyin || diamond_payout {
             return Ok(());
         }
 

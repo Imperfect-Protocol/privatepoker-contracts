@@ -24,7 +24,7 @@ pub struct Hand {
 
 #[storage]
 pub struct Table {
-    pub owner: StorageAddress,
+    pub created_by: StorageAddress,
     pub id: StorageU256,
     pub flags: StorageU256,
     pub name: StorageString,
@@ -88,7 +88,7 @@ impl Table {
             hand_id += U256::ONE;
         }
 
-        self.owner.erase();
+        self.created_by.erase();
         self.id.erase();
         self.flags.erase();
         self.name.erase();

@@ -25,7 +25,7 @@ sol! {
     }
 
     interface IPrivatePokerSettlerFacet {
-        function settleHand(uint256 lobby_id, uint256 table_id, uint256 hand_id, uint256 pot_size, uint256[] pot_split, uint256[] chips_balances, bytes digest, bytes aggregate_public_key) external;
+        function settleHand(uint256 lobby_id, uint256 table_id, uint256 hand_id, uint256 pot_size, uint256[] pot_split, uint256[] chips_balances, bytes digest, bytes aggregate_public_key) external returns (uint256);
     }
 
     interface IPrivatePokerSignatory {
@@ -53,6 +53,10 @@ sol! {
     interface IPrivatePokerAccountFacet {
         function subscribe(address player_address, address operator, bytes annonce_public_key, bytes encrypted_profile, uint8 subscription_tier) external;
         function updateAccount(address player_address, bytes annonce_public_key, bytes encrypted_profile) external;
+        function createAccount(address player_address) external;
+        function setAccountStatus(address player_address, uint256 flags) external;
+        function getAccountStatus(address player_address) external view returns (uint256);
+        function accountStatusChangedAt(address player_address) external view returns (uint256);
         function subscriptionPrice(uint8 tier) external view returns (uint256);
         function subscriptionChips(uint8 tier) external view returns (uint256);
         function getAccount(address player_address) external view returns (bytes);
@@ -135,6 +139,8 @@ sol! {
     struct AccountInfo {
         address player_address;
         address operator;
+        uint256 flags;
+        uint256 status_changed_at;
         bytes annonce_public_key;
         bytes encrypted_profile;
         uint8 subscription_tier;
@@ -151,6 +157,7 @@ sol! {
     event TableCreated(uint256 id, uint256 lobby_id, string name, uint256 buy_in);
     event PlayerJoined(address player_address, uint256 lobby_id, uint256 table_id, string player_name, uint256 player_chips);
     event AccountUpdated(address player_address, address operator);
+    event AccountStatusChanged(address player_address, uint256 flags);
     event SubscriptionPaid(address player_address, uint8 subscription_tier, uint256 usdc_amount, uint256 chips_amount, uint256 paid_at, uint256 expires_at);
 }
 

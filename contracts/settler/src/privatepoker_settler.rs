@@ -24,7 +24,7 @@ impl PrivatePokerSettler {
         chips_balances: Vec<U256>,
         digest: Bytes,
         aggregate_public_key: Bytes,
-    ) -> Result<(), Vec<u8>> {
+    ) -> Result<U256, Vec<u8>> {
         if hand_id == U256::ZERO {
             return Err(b"INVALID_HAND_ID")?;
         }
@@ -133,6 +133,7 @@ impl PrivatePokerSettler {
                 .balances
                 .insert(winner_address, winner_balance + payout);
             table.total_buyin.set(U256::ZERO);
+            lobby.mark_table_completed(table_id);
         }
 
         stylus_core::log(
@@ -144,7 +145,9 @@ impl PrivatePokerSettler {
                 digest: digest.0.into(),
             },
         );
-        Ok(())
+        Ok(game_ended_winner_index
+            .map(U256::from)
+            .unwrap_or_else(|| U256::from(num_players)))
     }
 }
 

@@ -72,6 +72,7 @@ impl PrivatePokerDiamond {
             .aggregate_pub_key
             .set(aggregate_pub_key_facet);
         diamond_storage.signatory.set(signatory);
+        diamond_storage.owner.set(initial_owner);
 
         let mut chips = PrivatePokerChipsStorage::storage_slot();
         erc20::init_token(
@@ -136,6 +137,10 @@ impl PrivatePokerDiamond {
 
     pub fn signatory(&self) -> Address {
         DiamondStorage::storage_slot().signatory.get()
+    }
+
+    pub fn diamond_owner(&self) -> Address {
+        DiamondStorage::storage_slot().owner.get()
     }
 
     #[payable]
@@ -222,6 +227,10 @@ fn facet_kind_for_selector(selector: [u8; 4]) -> Result<FacetKind, Vec<u8>> {
 
         IPrivatePokerAccountFacet::subscribeCall::SELECTOR
         | IPrivatePokerAccountFacet::updateAccountCall::SELECTOR
+        | IPrivatePokerAccountFacet::createAccountCall::SELECTOR
+        | IPrivatePokerAccountFacet::setAccountStatusCall::SELECTOR
+        | IPrivatePokerAccountFacet::getAccountStatusCall::SELECTOR
+        | IPrivatePokerAccountFacet::accountStatusChangedAtCall::SELECTOR
         | IPrivatePokerAccountFacet::subscriptionPriceCall::SELECTOR
         | IPrivatePokerAccountFacet::subscriptionChipsCall::SELECTOR
         | IPrivatePokerAccountFacet::getAccountCall::SELECTOR
@@ -399,6 +408,18 @@ mod tests {
         );
         assert_eq!(
             facet_kind_for_selector(IPrivatePokerAccountFacet::getAccountCall::SELECTOR),
+            Ok(FacetKind::Account)
+        );
+        assert_eq!(
+            facet_kind_for_selector(IPrivatePokerAccountFacet::createAccountCall::SELECTOR),
+            Ok(FacetKind::Account)
+        );
+        assert_eq!(
+            facet_kind_for_selector(IPrivatePokerAccountFacet::setAccountStatusCall::SELECTOR),
+            Ok(FacetKind::Account)
+        );
+        assert_eq!(
+            facet_kind_for_selector(IPrivatePokerAccountFacet::getAccountStatusCall::SELECTOR),
             Ok(FacetKind::Account)
         );
         assert_eq!(

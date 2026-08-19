@@ -49,7 +49,9 @@ impl PrivatePokerLobby {
         if new_lobby.id.get() != U256::ZERO {
             return Err("LOBBY_ALREADY_EXISTS".into());
         }
-        new_lobby.table_ids.erase();
+        new_lobby.open_table_ids.erase();
+        new_lobby.running_table_ids.erase();
+        new_lobby.completed_table_ids.erase();
         new_lobby.id.set(id);
         new_lobby.game_type.set(game_type);
         new_lobby.flags.set(flags);
@@ -88,9 +90,21 @@ impl PrivatePokerLobby {
         }
 
         let mut lobby = main_lobby.lobbies.setter(id);
-        let len = lobby.table_ids.len();
+        let len = lobby.open_table_ids.len();
         for i in 0..len {
-            let table_id = lobby.table_ids.get(i).unwrap();
+            let table_id = lobby.open_table_ids.get(i).unwrap();
+            let mut table = lobby.tables.setter(table_id);
+            table.clear();
+        }
+        let len = lobby.running_table_ids.len();
+        for i in 0..len {
+            let table_id = lobby.running_table_ids.get(i).unwrap();
+            let mut table = lobby.tables.setter(table_id);
+            table.clear();
+        }
+        let len = lobby.completed_table_ids.len();
+        for i in 0..len {
+            let table_id = lobby.completed_table_ids.get(i).unwrap();
             let mut table = lobby.tables.setter(table_id);
             table.clear();
         }
@@ -101,7 +115,9 @@ impl PrivatePokerLobby {
         lobby.name.erase();
         lobby.total_volume.erase();
         lobby.total_players.erase();
-        lobby.table_ids.erase();
+        lobby.open_table_ids.erase();
+        lobby.running_table_ids.erase();
+        lobby.completed_table_ids.erase();
 
         Ok(())
     }
