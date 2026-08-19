@@ -3,13 +3,19 @@ use alloc::{format, vec::Vec};
 use alloy_primitives::Address;
 use alloy_sol_types::SolCall;
 use privatepoker_common::{
+    calls::ContractCalls,
     erc20,
-    lobby::{
+    interfaces::{
         IPrivatePokerAccountFacet, IPrivatePokerAggregatePubKeyFacet, IPrivatePokerCashierFacet,
         IPrivatePokerChipsFacet, IPrivatePokerHandFacet, IPrivatePokerLobbyFacet,
-        IPrivatePokerSettlerFacet, IPrivatePokerSpectateFacet, IPrivatePokerTableFacet, MainLobby,
-        PrivatePokerAccountsStorage, PrivatePokerCashierStorage, PrivatePokerChipsStorage,
+        IPrivatePokerSettlerFacet, IPrivatePokerSignatory, IPrivatePokerSpectateFacet,
+        IPrivatePokerTableFacet,
     },
+    lobby::{
+        MainLobby, PrivatePokerAccountsStorage, PrivatePokerCashierStorage,
+        PrivatePokerChipsStorage, PrivatePokerDiamond as DiamondStorage,
+    },
+    poker::G1AFFINE_COMPRESSED_LEN,
 };
 use stylus_sdk::{prelude::*, ArbResult};
 
@@ -32,7 +38,7 @@ impl PrivatePokerDiamond {
         chips_facet: Address,
         settler_facet: Address,
         aggregate_pub_key_facet: Address,
-        verify_signature: Address,
+        signatory: Address,
         usdc: Address,
     ) -> Result<(), Vec<u8>> {
         ensure_not_zero(lobby_facet, b"LOBBY_FACET_ZERO")?;
@@ -44,7 +50,7 @@ impl PrivatePokerDiamond {
         ensure_not_zero(chips_facet, b"CHIPS_FACET_ZERO")?;
         ensure_not_zero(settler_facet, b"SETTLER_FACET_ZERO")?;
         ensure_not_zero(aggregate_pub_key_facet, b"AGGREGATE_PUB_KEY_FACET_ZERO")?;
-        ensure_not_zero(verify_signature, b"VERIFY_SIGNATURE_ZERO")?;
+        ensure_not_zero(signatory, b"SIGNATORY_ZERO")?;
         ensure_not_zero(usdc, b"USDC_ZERO")?;
 
         let diamond = self.vm().contract_address();
@@ -52,19 +58,21 @@ impl PrivatePokerDiamond {
         let mut main_lobby = MainLobby::storage_slot();
         main_lobby.owner.set(initial_owner);
         main_lobby.chip_token.set(diamond);
-        main_lobby.facets.lobby.set(lobby_facet);
-        main_lobby.facets.table.set(table_facet);
-        main_lobby.facets.hand.set(hand_facet);
-        main_lobby.facets.spectate.set(spectate_facet);
-        main_lobby.facets.account.set(account_facet);
-        main_lobby.facets.cashier.set(cashier_facet);
-        main_lobby.facets.chips.set(chips_facet);
-        main_lobby.facets.settler.set(settler_facet);
-        main_lobby
-            .facets
+
+        let mut diamond_storage = DiamondStorage::storage_slot();
+        diamond_storage.lobby.set(lobby_facet);
+        diamond_storage.table.set(table_facet);
+        diamond_storage.hand.set(hand_facet);
+        diamond_storage.spectate.set(spectate_facet);
+        diamond_storage.account.set(account_facet);
+        diamond_storage.cashier.set(cashier_facet);
+        diamond_storage.chips.set(chips_facet);
+        diamond_storage.settler.set(settler_facet);
+        diamond_storage
             .aggregate_pub_key
             .set(aggregate_pub_key_facet);
-        main_lobby.facets.verify_signature.set(verify_signature);
+        diamond_storage.signatory.set(signatory);
+        diamond_storage.owner.set(initial_owner);
 
         let mut chips = PrivatePokerChipsStorage::storage_slot();
         erc20::init_token(
@@ -92,43 +100,47 @@ impl PrivatePokerDiamond {
     }
 
     pub fn lobby_facet(&self) -> Address {
-        MainLobby::storage_slot().facets.lobby.get()
+        DiamondStorage::storage_slot().lobby.get()
     }
 
     pub fn table_facet(&self) -> Address {
-        MainLobby::storage_slot().facets.table.get()
+        DiamondStorage::storage_slot().table.get()
     }
 
     pub fn hand_facet(&self) -> Address {
-        MainLobby::storage_slot().facets.hand.get()
+        DiamondStorage::storage_slot().hand.get()
     }
 
     pub fn spectate_facet(&self) -> Address {
-        MainLobby::storage_slot().facets.spectate.get()
+        DiamondStorage::storage_slot().spectate.get()
     }
 
     pub fn account_facet(&self) -> Address {
-        MainLobby::storage_slot().facets.account.get()
+        DiamondStorage::storage_slot().account.get()
     }
 
     pub fn cashier_facet(&self) -> Address {
-        MainLobby::storage_slot().facets.cashier.get()
+        DiamondStorage::storage_slot().cashier.get()
     }
 
     pub fn chips_facet(&self) -> Address {
-        MainLobby::storage_slot().facets.chips.get()
+        DiamondStorage::storage_slot().chips.get()
     }
 
     pub fn settler_facet(&self) -> Address {
-        MainLobby::storage_slot().facets.settler.get()
+        DiamondStorage::storage_slot().settler.get()
     }
 
     pub fn aggregate_pub_key_facet(&self) -> Address {
-        MainLobby::storage_slot().facets.aggregate_pub_key.get()
+        DiamondStorage::storage_slot().aggregate_pub_key.get()
     }
 
-    pub fn verify_signature(&self) -> Address {
-        MainLobby::storage_slot().facets.verify_signature.get()
+    pub fn signatory(&self) -> Address {
+        DiamondStorage::storage_slot().signatory.get()
+    }
+
+    pub fn diamond_owner(&self) -> Address {
+        DiamondStorage::storage_slot().owner.get()
     }
 
     #[payable]
@@ -141,24 +153,33 @@ impl PrivatePokerDiamond {
         let mut selector = [0u8; 4];
         selector.copy_from_slice(&calldata[0..4]);
         let facet = facet_for_selector(selector)?;
+        let delegate_calldata = if requires_signature(selector) {
+            if calldata.len() < 4 + G1AFFINE_COMPRESSED_LEN {
+                return Err(b"SIGNATURE_MISSING".to_vec());
+            }
+            verify_signed_calldata(self, calldata)?;
+            &calldata[..calldata.len() - G1AFFINE_COMPRESSED_LEN]
+        } else {
+            calldata
+        };
 
-        unsafe { Ok(self.vm().delegate_call(&self, facet, calldata)?) }
+        unsafe { self.delegate_call_raw(facet, delegate_calldata) }
     }
 }
 
 fn facet_for_selector(selector: [u8; 4]) -> Result<Address, Vec<u8>> {
-    let main_lobby = MainLobby::storage_slot();
+    let diamond = DiamondStorage::storage_slot();
 
     let facet = match facet_kind_for_selector(selector)? {
-        FacetKind::Lobby => main_lobby.facets.lobby.get(),
-        FacetKind::Table => main_lobby.facets.table.get(),
-        FacetKind::Hand => main_lobby.facets.hand.get(),
-        FacetKind::Spectate => main_lobby.facets.spectate.get(),
-        FacetKind::Account => main_lobby.facets.account.get(),
-        FacetKind::Cashier => main_lobby.facets.cashier.get(),
-        FacetKind::Chips => main_lobby.facets.chips.get(),
-        FacetKind::Settler => main_lobby.facets.settler.get(),
-        FacetKind::AggregatePubKey => main_lobby.facets.aggregate_pub_key.get(),
+        FacetKind::Lobby => diamond.lobby.get(),
+        FacetKind::Table => diamond.table.get(),
+        FacetKind::Hand => diamond.hand.get(),
+        FacetKind::Spectate => diamond.spectate.get(),
+        FacetKind::Account => diamond.account.get(),
+        FacetKind::Cashier => diamond.cashier.get(),
+        FacetKind::Chips => diamond.chips.get(),
+        FacetKind::Settler => diamond.settler.get(),
+        FacetKind::AggregatePubKey => diamond.aggregate_pub_key.get(),
     };
 
     ensure_not_zero(facet, b"FACET_NOT_INSTALLED")?;
@@ -206,6 +227,10 @@ fn facet_kind_for_selector(selector: [u8; 4]) -> Result<FacetKind, Vec<u8>> {
 
         IPrivatePokerAccountFacet::subscribeCall::SELECTOR
         | IPrivatePokerAccountFacet::updateAccountCall::SELECTOR
+        | IPrivatePokerAccountFacet::createAccountCall::SELECTOR
+        | IPrivatePokerAccountFacet::setAccountStatusCall::SELECTOR
+        | IPrivatePokerAccountFacet::getAccountStatusCall::SELECTOR
+        | IPrivatePokerAccountFacet::accountStatusChangedAtCall::SELECTOR
         | IPrivatePokerAccountFacet::subscriptionPriceCall::SELECTOR
         | IPrivatePokerAccountFacet::subscriptionChipsCall::SELECTOR
         | IPrivatePokerAccountFacet::getAccountCall::SELECTOR
@@ -250,6 +275,27 @@ fn facet_kind_for_selector(selector: [u8; 4]) -> Result<FacetKind, Vec<u8>> {
             return Err(format!("FUNCTION_NOT_FOUND: 0x{}", hex::encode(selector)).into_bytes());
         }
     })
+}
+
+fn requires_signature(selector: [u8; 4]) -> bool {
+    matches!(
+        selector,
+        IPrivatePokerAggregatePubKeyFacet::setTableAggregatePublicKeyCall::SELECTOR
+            | IPrivatePokerSettlerFacet::settleHandCall::SELECTOR
+    )
+}
+
+fn verify_signed_calldata(
+    ctx: &mut PrivatePokerDiamond,
+    signed_calldata: &[u8],
+) -> Result<(), Vec<u8>> {
+    let signatory = DiamondStorage::storage_slot().signatory.get();
+    ensure_not_zero(signatory, b"SIGNATORY_NOT_SET")?;
+
+    let call = IPrivatePokerSignatory::verifySignedCalldataCall {
+        signed_calldata: signed_calldata.to_vec().into(),
+    };
+    ctx.call_bool(signatory, &call.abi_encode(), b"INVALID_SIGNATURE")
 }
 
 fn ensure_not_zero(address: Address, error: &[u8]) -> Result<(), Vec<u8>> {
@@ -362,6 +408,18 @@ mod tests {
         );
         assert_eq!(
             facet_kind_for_selector(IPrivatePokerAccountFacet::getAccountCall::SELECTOR),
+            Ok(FacetKind::Account)
+        );
+        assert_eq!(
+            facet_kind_for_selector(IPrivatePokerAccountFacet::createAccountCall::SELECTOR),
+            Ok(FacetKind::Account)
+        );
+        assert_eq!(
+            facet_kind_for_selector(IPrivatePokerAccountFacet::setAccountStatusCall::SELECTOR),
+            Ok(FacetKind::Account)
+        );
+        assert_eq!(
+            facet_kind_for_selector(IPrivatePokerAccountFacet::getAccountStatusCall::SELECTOR),
             Ok(FacetKind::Account)
         );
         assert_eq!(

@@ -99,6 +99,7 @@ export const chainConfig = {
   privatePokerContractAddress: '${PP_LOBBY:-}',
   settlerFacetAddress: '${PP_SETTLER_FACET:-}',
   aggregatePubKeyFacetAddress: '${PP_AGGREGATE_PUB_KEY_FACET:-}',
+  signatoryAddress: '${PP_SIGNATORY:-}',
   hashToCurveAddress: '${PP_HASH_TO_CURVE:-}',
   verifySignatureAddress: '${PP_VERIFY_SIGNATURE:-}',
   maxGas: $max_gas_block,

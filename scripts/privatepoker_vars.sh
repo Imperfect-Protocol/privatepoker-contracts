@@ -202,6 +202,7 @@ all_contract_names() {
         hash_to_curve \
         lobby \
         settler \
+        signatory \
         spectate \
         table \
         test_usdc \
@@ -510,6 +511,7 @@ print_privatepoker_core_deployment_summary() {
     print_privatepoker_deploy_row hand PP_HAND_FACET "$PP_HAND_FACET"
     print_privatepoker_deploy_row settler PP_SETTLER_FACET "$PP_SETTLER_FACET"
     print_privatepoker_deploy_row aggregate_pub_key PP_AGGREGATE_PUB_KEY_FACET "$PP_AGGREGATE_PUB_KEY_FACET"
+    print_privatepoker_deploy_row signatory PP_SIGNATORY "$PP_SIGNATORY"
     print_privatepoker_deploy_row hash_to_curve PP_HASH_TO_CURVE "$PP_HASH_TO_CURVE"
     print_privatepoker_deploy_row verify_signature PP_VERIFY_SIGNATURE "$PP_VERIFY_SIGNATURE"
     print_privatepoker_deploy_row spectate PP_SPECTATE_FACET "$PP_SPECTATE_FACET"
@@ -531,6 +533,7 @@ export PP_TABLE_FACET=$PP_TABLE_FACET
 export PP_HAND_FACET=$PP_HAND_FACET
 export PP_SETTLER_FACET=$PP_SETTLER_FACET
 export PP_AGGREGATE_PUB_KEY_FACET=$PP_AGGREGATE_PUB_KEY_FACET
+export PP_SIGNATORY=$PP_SIGNATORY
 export PP_HASH_TO_CURVE=$PP_HASH_TO_CURVE
 export PP_VERIFY_SIGNATURE=$PP_VERIFY_SIGNATURE
 export PP_SPECTATE_FACET=$PP_SPECTATE_FACET
@@ -586,8 +589,11 @@ deploy_privatepoker_core() {
     PP_HASH_TO_CURVE=$(capture_deployment deploy hash_to_curve) || return 1
     export PP_HASH_TO_CURVE
 
-    PP_VERIFY_SIGNATURE=$(capture_deployment deploy_constructed verify_signature 'constructor(address)' "$PP_HASH_TO_CURVE") || return 1
+    PP_VERIFY_SIGNATURE=$(capture_deployment deploy verify_signature) || return 1
     export PP_VERIFY_SIGNATURE
+
+    PP_SIGNATORY=$(capture_deployment deploy_constructed signatory 'constructor(address,address)' "$PP_HASH_TO_CURVE" "$PP_VERIFY_SIGNATURE") || return 1
+    export PP_SIGNATORY
 
     PP_SETTLER_FACET=$(capture_deployment deploy settler) || return 1
     export PP_SETTLER_FACET
@@ -598,7 +604,7 @@ deploy_privatepoker_core() {
     PP_SPECTATE_FACET=$(capture_deployment deploy spectate) || return 1
     export PP_SPECTATE_FACET
 
-    PP_LOBBY=$(capture_deployment deploy_constructed diamond 'constructor(address,address,address,address,address,address,address,address,address,address,address,address)' "$PP_OWNER" "$PP_LOBBY_FACET" "$PP_TABLE_FACET" "$PP_HAND_FACET" "$PP_SPECTATE_FACET" "$PP_ACCOUNT_FACET" "$PP_CASHIER_FACET" "$PP_CHIPS_FACET" "$PP_SETTLER_FACET" "$PP_AGGREGATE_PUB_KEY_FACET" "$PP_VERIFY_SIGNATURE" "$PP_USDC") || return 1
+    PP_LOBBY=$(capture_deployment deploy_constructed diamond 'constructor(address,address,address,address,address,address,address,address,address,address,address,address)' "$PP_OWNER" "$PP_LOBBY_FACET" "$PP_TABLE_FACET" "$PP_HAND_FACET" "$PP_SPECTATE_FACET" "$PP_ACCOUNT_FACET" "$PP_CASHIER_FACET" "$PP_CHIPS_FACET" "$PP_SETTLER_FACET" "$PP_AGGREGATE_PUB_KEY_FACET" "$PP_SIGNATORY" "$PP_USDC") || return 1
     export PP_LOBBY
     PP_ACCOUNT=$PP_LOBBY
     PP_CASHIER=$PP_LOBBY

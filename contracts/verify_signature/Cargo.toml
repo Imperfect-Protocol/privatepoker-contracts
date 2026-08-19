@@ -6,7 +6,6 @@ description = "Private Poker Verify Signature"
 
 [dependencies]
 alloy-primitives = { workspace = true }
-alloy-sol-types = { workspace = true }
 bls12_381 = { workspace = true }
 pairing = { workspace = true }
 stylus-sdk = { workspace = true }

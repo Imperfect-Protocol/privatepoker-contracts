@@ -1,12 +1,14 @@
-use alloc::{vec, vec::Vec};
+use alloc::{string::String, vec, vec::Vec};
 
-use alloy_primitives::{Address, U8};
+use alloy_primitives::Address;
 use alloy_sol_types::{sol, SolCall, SolValue};
 use privatepoker_common::{
+    calls::ContractCalls,
     erc20,
+    interfaces::{AccountInfo, AccountStatusChanged, AccountUpdated, SubscriptionPaid},
     lobby::{
-        AccountInfo, AccountUpdated, PrivatePokerAccountsStorage, PrivatePokerCashierStorage,
-        PrivatePokerChipsStorage, SubscriptionPaid,
+        PrivatePokerAccountsStorage, PrivatePokerCashierStorage, PrivatePokerChipsStorage,
+        ACCOUNT_STATUS_UNVERIFIED, ACCOUNT_STATUS_VERIFIED,
     },
 };
 use stylus_sdk::{abi::Bytes, alloy_primitives::U256, prelude::*, stylus_core};
@@ -118,12 +120,16 @@ impl PrivatePokerAccount {
         &mut self,
         player_address: Address,
         operator: Address,
+        display_name: String,
         annonce_public_key: Bytes,
         encrypted_profile: Bytes,
         subscription_tier: u8,
     ) -> Result<(), Vec<u8>> {
-        self.require_player_or_operator(player_address, operator)?;
         self.require_addresses(player_address, operator)?;
+        self.require_operator_or_owner(operator)?;
+
+        let mut accounts = PrivatePokerAccountsStorage::storage_slot();
+        accounts.require_verified(player_address)?;
 
         let usdc_amount = self.subscription_price(subscription_tier)?;
         let chips_amount = self.subscription_chips(subscription_tier)?;
@@ -136,16 +142,24 @@ impl PrivatePokerAccount {
             usdc_amount,
             chips_amount,
         )?;
-        self.write_account(
+        accounts.write_account(
             player_address,
             operator,
-            annonce_public_key,
-            encrypted_profile,
+            display_name,
+            annonce_public_key.as_ref(),
+            encrypted_profile.as_ref(),
             subscription_tier,
             paid_at,
             expires_at,
-        );
+        )?;
 
+        stylus_core::log(
+            self.vm(),
+            AccountUpdated {
+                player_address,
+                operator,
+            },
+        );
         stylus_core::log(
             self.vm(),
             SubscriptionPaid {
@@ -164,30 +178,28 @@ impl PrivatePokerAccount {
     pub fn update_account(
         &mut self,
         player_address: Address,
-        operator: Address,
+        display_name: String,
         annonce_public_key: Bytes,
         encrypted_profile: Bytes,
     ) -> Result<(), Vec<u8>> {
-        self.require_player_or_existing_operator(player_address, operator)?;
-        self.require_addresses(player_address, operator)?;
-
-        let mut accounts = PrivatePokerAccountsStorage::storage_slot();
-        let mut account = accounts.accounts.setter(player_address);
-        if account.exists.get() == U256::ZERO {
-            return Err(b"ACCOUNT_MISSING".to_vec());
+        if player_address == Address::ZERO {
+            return Err(b"PLAYER_ZERO".to_vec());
         }
 
-        account.operator.set(operator);
-        account
-            .annonce_public_key
-            .set_bytes(annonce_public_key.as_ref());
-        account
-            .encrypted_profile
-            .set_bytes(encrypted_profile.as_ref());
-        accounts
-            .operator_players
-            .setter(operator)
-            .set(player_address);
+        let sender = self.vm().msg_sender();
+        let main_lobby_owner = self.owner();
+        let mut accounts = PrivatePokerAccountsStorage::storage_slot();
+        let operator = accounts.operator_for_player(player_address)?;
+        if sender != operator && sender != main_lobby_owner {
+            return Err(b"NOT_OPERATOR_OR_OWNER".to_vec());
+        }
+
+        accounts.update_account_profile(
+            player_address,
+            display_name,
+            annonce_public_key.as_ref(),
+            encrypted_profile.as_ref(),
+        )?;
 
         stylus_core::log(
             self.vm(),
@@ -199,16 +211,82 @@ impl PrivatePokerAccount {
         Ok(())
     }
 
+    pub fn create_account(
+        &mut self,
+        player_address: Address,
+        display_name: String,
+        encrypted_profile: Bytes,
+    ) -> Result<(), Vec<u8>> {
+        if player_address == Address::ZERO {
+            return Err(b"PLAYER_ZERO".to_vec());
+        }
+        let sender = self.vm().msg_sender();
+        if sender != player_address && sender != self.owner() {
+            return Err(b"NOT_PLAYER_OR_OWNER".to_vec());
+        }
+
+        PrivatePokerAccountsStorage::storage_slot().create_account(
+            player_address,
+            display_name,
+            encrypted_profile.as_ref(),
+            U256::from(self.vm().block_timestamp()),
+        )?;
+        stylus_core::log(
+            self.vm(),
+            AccountStatusChanged {
+                player_address,
+                flags: ACCOUNT_STATUS_UNVERIFIED,
+            },
+        );
+        Ok(())
+    }
+
+    pub fn set_account_status(
+        &mut self,
+        player_address: Address,
+        flags: U256,
+    ) -> Result<(), Vec<u8>> {
+        self.only_owner()?;
+        if player_address == Address::ZERO {
+            return Err(b"PLAYER_ZERO".to_vec());
+        }
+
+        PrivatePokerAccountsStorage::storage_slot().set_account_status(
+            player_address,
+            flags,
+            U256::from(self.vm().block_timestamp()),
+        )?;
+        stylus_core::log(
+            self.vm(),
+            AccountStatusChanged {
+                player_address,
+                flags,
+            },
+        );
+        Ok(())
+    }
+
+    pub fn get_account_status(&self, player_address: Address) -> U256 {
+        PrivatePokerAccountsStorage::storage_slot().account_status(player_address)
+    }
+
+    pub fn account_status_changed_at(&self, player_address: Address) -> U256 {
+        PrivatePokerAccountsStorage::storage_slot().account_status_changed_at(player_address)
+    }
+
     pub fn get_account(&self, player_address: Address) -> Result<Bytes, Vec<u8>> {
         let accounts = PrivatePokerAccountsStorage::storage_slot();
         let account = accounts.accounts.get(player_address);
-        if account.exists.get() == U256::ZERO {
+        if account.flags.get() == U256::ZERO {
             return Err(b"ACCOUNT_MISSING".to_vec());
         }
 
         let info = AccountInfo {
             player_address: account.player_address.get(),
             operator: account.operator.get(),
+            flags: account.flags.get(),
+            status_changed_at: account.status_changed_at.get(),
+            display_name: account.display_name.get_string(),
             annonce_public_key: account.annonce_public_key.get_bytes().into(),
             encrypted_profile: account.encrypted_profile.get_bytes().into(),
             subscription_tier: account.subscription_tier.get().to::<u8>(),
@@ -222,7 +300,7 @@ impl PrivatePokerAccount {
     pub fn is_subscription_active(&self, player_address: Address) -> bool {
         let accounts = PrivatePokerAccountsStorage::storage_slot();
         let account = accounts.accounts.get(player_address);
-        if account.exists.get() == U256::ZERO {
+        if account.flags.get() != ACCOUNT_STATUS_VERIFIED {
             return false;
         }
         account.subscription_expires_at.get() > U256::from(self.vm().block_timestamp())
@@ -240,58 +318,9 @@ impl PrivatePokerAccount {
         }
         Ok(accounts.players.get(index).unwrap())
     }
+}
 
-    fn write_account(
-        &mut self,
-        player_address: Address,
-        operator: Address,
-        annonce_public_key: Bytes,
-        encrypted_profile: Bytes,
-        subscription_tier: u8,
-        paid_at: U256,
-        expires_at: U256,
-    ) {
-        let mut accounts = PrivatePokerAccountsStorage::storage_slot();
-        let mut account = accounts.accounts.setter(player_address);
-        let is_new = account.exists.get() == U256::ZERO;
-        if is_new {
-            account.exists.set(U256::ONE);
-            account.player_address.set(player_address);
-            accounts.players.push(player_address);
-        } else {
-            let previous_operator = account.operator.get();
-            if previous_operator != Address::ZERO
-                && previous_operator != operator
-                && accounts.operator_players.get(previous_operator) == player_address
-            {
-                accounts.operator_players.delete(previous_operator);
-            }
-        }
-
-        account.operator.set(operator);
-        account
-            .annonce_public_key
-            .set_bytes(annonce_public_key.as_ref());
-        account
-            .encrypted_profile
-            .set_bytes(encrypted_profile.as_ref());
-        account.subscription_tier.set(U8::from(subscription_tier));
-        account.subscription_paid_at.set(paid_at);
-        account.subscription_expires_at.set(expires_at);
-        accounts
-            .operator_players
-            .setter(operator)
-            .set(player_address);
-
-        stylus_core::log(
-            self.vm(),
-            AccountUpdated {
-                player_address,
-                operator,
-            },
-        );
-    }
-
+impl PrivatePokerAccount {
     fn deposit_subscription(
         &mut self,
         payer: Address,
@@ -322,7 +351,7 @@ impl PrivatePokerAccount {
             .accounted_assets
             .get();
         let balance = IERC20Like::balanceOfCall { account: diamond };
-        let balance = call_u256(self, usdc, balance.abi_encode(), b"USDC_BALANCE_FAILED")?;
+        let balance = self.call_u256(usdc, &balance.abi_encode(), b"USDC_BALANCE_FAILED")?;
         if balance < accounted_assets + assets {
             return Err(b"USDC_NOT_RECEIVED".to_vec());
         }
@@ -361,43 +390,11 @@ impl PrivatePokerAccount {
         Ok(())
     }
 
-    fn require_player_or_operator(
-        &self,
-        player_address: Address,
-        operator: Address,
-    ) -> Result<(), Vec<u8>> {
+    fn require_operator_or_owner(&self, operator: Address) -> Result<(), Vec<u8>> {
         let sender = self.vm().msg_sender();
-        if sender != player_address && sender != operator {
-            return Err(b"NOT_PLAYER_OR_OPERATOR".to_vec());
+        if sender != operator && sender != self.owner() {
+            return Err(b"NOT_OPERATOR_OR_OWNER".to_vec());
         }
         Ok(())
     }
-
-    fn require_player_or_existing_operator(
-        &self,
-        player_address: Address,
-        operator: Address,
-    ) -> Result<(), Vec<u8>> {
-        let sender = self.vm().msg_sender();
-        let accounts = PrivatePokerAccountsStorage::storage_slot();
-        let account = accounts.accounts.get(player_address);
-        let current_operator = account.operator.get();
-        if sender != player_address && sender != operator && sender != current_operator {
-            return Err(b"NOT_PLAYER_OR_OPERATOR".to_vec());
-        }
-        Ok(())
-    }
-}
-
-fn call_u256(
-    ctx: &mut PrivatePokerAccount,
-    to: Address,
-    calldata: Vec<u8>,
-    err: &[u8],
-) -> Result<U256, Vec<u8>> {
-    let output = ctx
-        .vm()
-        .call(&ctx, to, &calldata)
-        .map_err(|_| err.to_vec())?;
-    U256::abi_decode(&output, true).map_err(|_| err.to_vec())
 }

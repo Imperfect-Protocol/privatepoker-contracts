@@ -3,7 +3,8 @@ use alloc::{string::String, vec::Vec};
 use alloy_primitives::Address;
 use privatepoker_common::{
     erc20,
-    lobby::{clear_table, MainLobby, PlayerJoined, PrivatePokerChipsStorage, TableCreated},
+    interfaces::{PlayerJoined, TableCreated},
+    lobby::{MainLobby, PrivatePokerAccountsStorage, PrivatePokerChipsStorage},
 };
 use stylus_sdk::{abi::Bytes, alloy_primitives::U256, prelude::*, stylus_core};
 
@@ -21,15 +22,17 @@ impl PrivatePokerTable {
         buy_in: U256,
         num_players: U256,
         player_address: Address,
-        operator: Address,
         annonce_public_key: Bytes,
     ) -> Result<(), Vec<u8>> {
         if num_players < U256::from(2) {
             return Err(b"INVALID_NUM_PLAYERS")?;
         }
+        let operator =
+            PrivatePokerAccountsStorage::storage_slot().operator_for_player(player_address)?;
         let sender = self.vm().msg_sender();
-        if sender != player_address && sender != operator {
-            return Err(b"INVALID_PLAYER_OPERATOR")?;
+        let owner = MainLobby::storage_slot().owner.get();
+        if sender != operator && sender != owner {
+            return Err(b"NOT_OPERATOR_OR_OWNER")?;
         }
         self.collect_chip_buy_in(lobby_id, table_id, player_address, buy_in, false)?;
 
@@ -41,9 +44,9 @@ impl PrivatePokerTable {
         }
 
         let mut table = lobby.tables.setter(table_id);
-        clear_table(&mut table);
+        table.clear();
 
-        table.owner.set(player_address);
+        table.created_by.set(player_address);
         table.id.set(table_id);
         table.flags.set(num_players);
         table.name.set_str(name.clone());
@@ -60,7 +63,7 @@ impl PrivatePokerTable {
         new_player.annonce_public_key.set_bytes(annonce_public_key);
         new_player.operator.set(operator);
 
-        lobby.table_ids.push(table_id);
+        lobby.add_open_table(table_id);
 
         let total_players = lobby.total_players.get();
         lobby.total_players.set(total_players + U256::ONE);
@@ -98,12 +101,14 @@ impl PrivatePokerTable {
         lobby_id: U256,
         table_id: U256,
         player_address: Address,
-        operator: Address,
         annonce_public_key: Bytes,
     ) -> Result<(), Vec<u8>> {
+        let operator =
+            PrivatePokerAccountsStorage::storage_slot().operator_for_player(player_address)?;
         let sender = self.vm().msg_sender();
-        if sender != player_address && sender != operator {
-            return Err(b"INVALID_PLAYER_OPERATOR")?;
+        let owner = MainLobby::storage_slot().owner.get();
+        if sender != operator && sender != owner {
+            return Err(b"NOT_OPERATOR_OR_OWNER")?;
         }
         let buy_in = self.get_join_buy_in(lobby_id, table_id)?;
         self.collect_chip_buy_in(lobby_id, table_id, player_address, buy_in, true)?;
@@ -139,6 +144,7 @@ impl PrivatePokerTable {
 
         let current_total_buyin = table.total_buyin.get();
         table.total_buyin.set(current_total_buyin + buy_in);
+        let table_is_full = required_players > 0 && table.players.len() >= required_players;
 
         let lobby_volume = lobby.total_volume.get();
         lobby.total_volume.set(lobby_volume + buy_in);
@@ -148,6 +154,10 @@ impl PrivatePokerTable {
 
         let mut player_tables = main_lobby.player_tables.setter(player_address);
         player_tables.grow().set(table_id);
+
+        if table_is_full {
+            lobby.mark_table_running(table_id);
+        }
 
         stylus_core::log(
             self.vm(),
@@ -172,30 +182,21 @@ impl PrivatePokerTable {
         }
 
         let table = lobby.tables.getter(table_id);
-        if table.owner.get() != sender && main_lobby.owner.get() != sender {
-            return Err("UNAUTHORIZED".into());
-        }
-
-        let mut found = false;
-        let len = lobby.table_ids.len();
-        for i in 0..len {
-            if lobby.table_ids.get(i).unwrap() == table_id {
-                if i < len - 1 {
-                    let last_val = lobby.table_ids.get(len - 1).unwrap();
-                    lobby.table_ids.setter(i).unwrap().set(last_val);
-                }
-                lobby.table_ids.pop();
-                found = true;
-                break;
+        let owner = main_lobby.owner.get();
+        if sender != owner {
+            let operator = PrivatePokerAccountsStorage::storage_slot()
+                .operator_for_player(table.created_by.get())?;
+            if sender != operator {
+                return Err("UNAUTHORIZED".into());
             }
         }
 
-        if !found {
+        if !lobby.remove_table_id(table_id) {
             return Err("TABLE_NOT_FOUND".into());
         }
 
         let mut table = lobby.tables.setter(table_id);
-        clear_table(&mut table);
+        table.clear();
 
         Ok(())
     }

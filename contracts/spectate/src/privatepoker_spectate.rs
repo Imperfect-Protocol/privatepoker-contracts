@@ -2,7 +2,10 @@ use alloc::{vec, vec::Vec};
 
 use alloy_primitives::Address;
 use alloy_sol_types::SolValue;
-use privatepoker_common::lobby::{LobbyInfo, MainLobby, TableDetail, TableInfo, TablePlayerInfo};
+use privatepoker_common::{
+    interfaces::{LobbyInfo, TableDetail, TableInfo, TablePlayerInfo},
+    lobby::MainLobby,
+};
 use stylus_sdk::{abi::Bytes, alloy_primitives::U256, prelude::*};
 
 #[storage]
@@ -32,7 +35,7 @@ impl PrivatePokerSpectate {
             return Err(b"INVALID_LOBBY")?;
         }
 
-        Ok(U256::from(lobby.table_ids.len()))
+        Ok(U256::from(lobby.active_table_count()))
     }
 
     pub fn get_tables_range(
@@ -52,7 +55,7 @@ impl PrivatePokerSpectate {
         let last = first + count.to::<usize>();
 
         for index in first..last {
-            let Some(table_id) = lobby.table_ids.get(index) else {
+            let Some(table_id) = lobby.active_table_id_at(index) else {
                 return Err(b"INDEX_OUT_OF_RANGE")?;
             };
 
@@ -91,7 +94,7 @@ impl PrivatePokerSpectate {
             lobby_id,
             lobby_game_type: U256::from(lobby.game_type.get()),
             lobby_flags: U256::from(lobby.flags.get()),
-            lobby_table_count: U256::from(lobby.table_ids.len()),
+            lobby_table_count: U256::from(lobby.active_table_count()),
             lobby_player_count: U256::from(lobby.total_players.get()),
             lobby_total_volume: U256::from(lobby.total_volume.get()),
             lobby_name: lobby.name.get_string(),

@@ -27,6 +27,7 @@ sol! {
     event Transfer(address indexed from, address indexed to, uint256 value);
 }
 
+#[inline]
 pub fn init_token(
     token: &mut Erc20Storage,
     owner: Address,
@@ -40,38 +41,47 @@ pub fn init_token(
     token.decimals.set(Uint::<8, 1>::from(decimals));
 }
 
+#[inline]
 pub fn name(token: &Erc20Storage) -> String {
     token.name.get_string()
 }
 
+#[inline]
 pub fn symbol(token: &Erc20Storage) -> String {
     token.symbol.get_string()
 }
 
+#[inline]
 pub fn decimals(token: &Erc20Storage) -> u8 {
     token.decimals.get().to::<u8>()
 }
 
+#[inline]
 pub fn owner(token: &Erc20Storage) -> Address {
     token.owner.get()
 }
 
+#[inline]
 pub fn total_supply(token: &Erc20Storage) -> U256 {
     token.total_supply.get()
 }
 
+#[inline]
 pub fn balance_of(token: &Erc20Storage, account: Address) -> U256 {
     token.balances.get(account)
 }
 
+#[inline]
 pub fn allowance(token: &Erc20Storage, owner: Address, spender: Address) -> U256 {
     token.allowances.get(owner).get(spender)
 }
 
+#[inline]
 pub fn approve(token: &mut Erc20Storage, owner: Address, spender: Address, value: U256) {
     token.allowances.setter(owner).insert(spender, value);
 }
 
+#[inline]
 pub fn spend_allowance(
     token: &mut Erc20Storage,
     owner: Address,
@@ -89,6 +99,7 @@ pub fn spend_allowance(
     Ok(())
 }
 
+#[inline]
 pub fn transfer(
     token: &mut Erc20Storage,
     from: Address,
@@ -110,6 +121,7 @@ pub fn transfer(
     Ok(())
 }
 
+#[inline]
 pub fn mint(token: &mut Erc20Storage, to: Address, value: U256) -> Result<(), Vec<u8>> {
     if to == Address::ZERO {
         return Err(b"ERC20_MINT_TO_ZERO".to_vec());
@@ -120,6 +132,7 @@ pub fn mint(token: &mut Erc20Storage, to: Address, value: U256) -> Result<(), Ve
     Ok(())
 }
 
+#[inline]
 pub fn burn(token: &mut Erc20Storage, from: Address, value: U256) -> Result<(), Vec<u8>> {
     let balance = token.balances.get(from);
     if balance < value {

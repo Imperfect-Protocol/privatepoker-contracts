@@ -1,8 +1,9 @@
 use alloc::{vec, vec::Vec};
 
 use alloy_primitives::Address;
-use alloy_sol_types::{sol, SolCall, SolValue};
+use alloy_sol_types::{sol, SolCall};
 use privatepoker_common::{
+    calls::ContractCalls,
     erc20,
     lobby::{PrivatePokerCashierStorage, PrivatePokerChipsStorage},
 };
@@ -86,23 +87,13 @@ impl Cashier {
         let balance = IERC20Like::balanceOfCall {
             account: self.vm().contract_address(),
         };
-        call_u256(
-            self,
-            self.usdc(),
-            balance.abi_encode(),
-            b"USDC_BALANCE_FAILED",
-        )
+        self.call_u256(self.usdc(), &balance.abi_encode(), b"USDC_BALANCE_FAILED")
     }
 
     pub fn total_supply(&mut self) -> Result<U256, Vec<u8>> {
         self.require_tokens_set()?;
         let supply = IERC20Like::totalSupplyCall {};
-        call_u256(
-            self,
-            self.chips(),
-            supply.abi_encode(),
-            b"CHIPS_SUPPLY_FAILED",
-        )
+        self.call_u256(self.chips(), &supply.abi_encode(), b"CHIPS_SUPPLY_FAILED")
     }
 
     pub fn convert_to_shares(&self, assets: U256) -> U256 {
@@ -140,12 +131,7 @@ impl Cashier {
     pub fn max_withdraw(&mut self, owner: Address) -> Result<U256, Vec<u8>> {
         self.require_tokens_set()?;
         let balance = IERC20Like::balanceOfCall { account: owner };
-        call_u256(
-            self,
-            self.chips(),
-            balance.abi_encode(),
-            b"CHIPS_BALANCE_FAILED",
-        )
+        self.call_u256(self.chips(), &balance.abi_encode(), b"CHIPS_BALANCE_FAILED")
     }
 
     pub fn max_redeem(&mut self, owner: Address) -> Result<U256, Vec<u8>> {
@@ -179,12 +165,8 @@ impl Cashier {
             .get();
         if payer == diamond {
             let balance = IERC20Like::balanceOfCall { account: diamond };
-            let balance = call_u256(
-                self,
-                self.usdc(),
-                balance.abi_encode(),
-                b"USDC_BALANCE_FAILED",
-            )?;
+            let balance =
+                self.call_u256(self.usdc(), &balance.abi_encode(), b"USDC_BALANCE_FAILED")?;
             if balance < accounted_assets + amount {
                 return Err(b"USDC_NOT_RECEIVED".to_vec());
             }
@@ -194,10 +176,9 @@ impl Cashier {
                 to: diamond,
                 value: amount,
             };
-            call_bool(
-                self,
+            self.call_optional_bool(
                 self.usdc(),
-                pull.abi_encode(),
+                &pull.abi_encode(),
                 b"USDC_TRANSFER_FROM_FAILED",
             )?;
         }
@@ -252,33 +233,4 @@ impl Cashier {
         }
         Ok(())
     }
-}
-
-fn call_bool(ctx: &mut Cashier, to: Address, calldata: Vec<u8>, err: &[u8]) -> Result<(), Vec<u8>> {
-    let output = ctx
-        .vm()
-        .call(&ctx, to, &calldata)
-        .map_err(|_| err.to_vec())?;
-    if output.is_empty() {
-        return Ok(());
-    }
-    let ok = bool::abi_decode(&output, true).map_err(|_| err.to_vec())?;
-    if ok {
-        Ok(())
-    } else {
-        Err(err.to_vec())
-    }
-}
-
-fn call_u256(
-    ctx: &mut Cashier,
-    to: Address,
-    calldata: Vec<u8>,
-    err: &[u8],
-) -> Result<U256, Vec<u8>> {
-    let output = ctx
-        .vm()
-        .call(&ctx, to, &calldata)
-        .map_err(|_| err.to_vec())?;
-    U256::abi_decode(&output, true).map_err(|_| err.to_vec())
 }

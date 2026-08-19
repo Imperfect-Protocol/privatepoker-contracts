@@ -9,3 +9,4 @@
 /docs/*.out
 /docs/*.synctex.gz
 /docs/*.toc
+**/target/
