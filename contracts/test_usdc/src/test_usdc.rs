@@ -2,12 +2,32 @@ use alloc::{string::String, vec, vec::Vec};
 
 use alloy_primitives::Address;
 use privatepoker_common::erc20;
-use stylus_sdk::{alloy_primitives::U256, prelude::*, stylus_core};
+use stylus_sdk::{
+    alloy_primitives::U256,
+    prelude::*,
+    storage::{StorageMap, StorageU256},
+    stylus_core,
+};
+
+const MAX_REFILL: U256 = U256::from_limbs([100_000_000, 0, 0, 0]);
+const REFILL_WAITING_PERIOD: u64 = 30 * 24 * 60 * 60;
+
+#[storage]
+pub struct FaucetAccount {
+    next_refill: StorageU256,
+    remaining_amount: StorageU256,
+}
+
+#[storage]
+pub struct FaucetStorage {
+    accounts: StorageMap<Address, FaucetAccount>,
+}
 
 #[storage]
 #[entrypoint]
 pub struct TestUsdc {
     token: erc20::Erc20Storage,
+    faucet: FaucetStorage,
 }
 
 #[public]
@@ -104,8 +124,30 @@ impl TestUsdc {
         Ok(true)
     }
 
-    pub fn faucet(&mut self, value: U256) -> Result<bool, Vec<u8>> {
-        let to = self.vm().msg_sender();
+    pub fn faucet_next_refill(&self, account: Address) -> U256 {
+        self.faucet.accounts.get(account).next_refill.get()
+    }
+
+    pub fn faucet_remaining_amount(&self, account: Address) -> U256 {
+        self.faucet.accounts.get(account).remaining_amount.get()
+    }
+
+    pub fn faucet(&mut self, to: Address, value: U256) -> Result<bool, Vec<u8>> {
+        let from = self.vm().msg_sender();
+        let now = U256::from(self.vm().block_timestamp());
+        let mut account = self.faucet.accounts.setter(from);
+
+        if now > account.next_refill.get() {
+            account.remaining_amount.set(MAX_REFILL);
+            account
+                .next_refill
+                .set(now + U256::from(REFILL_WAITING_PERIOD));
+        }
+
+        let remaining_amount = account.remaining_amount.get();
+        let value = value.min(remaining_amount);
+        account.remaining_amount.set(remaining_amount - value);
+
         erc20::mint(&mut self.token, to, value)?;
         stylus_core::log(
             self.vm(),
