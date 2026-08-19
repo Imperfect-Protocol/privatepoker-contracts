@@ -1,34 +1,30 @@
 [package]
-name = "hash_to_curve"
+name = "signatory"
 version = "0.1.11"
 edition = "2021"
-description = "Private Poker Hash to Curve"
+description = "Private Poker Signatory"
 
 [dependencies]
 alloy-primitives = { workspace = true }
 alloy-sol-types = { workspace = true }
-bls12_381 = { workspace = true }
-digest = { workspace = true }
-hex = { workspace = true }
-pairing = { workspace = true }
+privatepoker-common = { workspace = true }
 stylus-sdk = { workspace = true }
 
 [dev-dependencies]
 stylus-sdk = { workspace = true, features = ["stylus-test"] }
-tokio = { workspace = true, features = ["full"] }
-eyre = { workspace = true }
-dotenv = { workspace = true }
 
 [features]
 default = ["mini-alloc"]
-export-abi = ["stylus-sdk/export-abi"]
+export-abi = ["stylus-sdk/export-abi", "privatepoker-common/export-abi"]
 test-debug = [
+    "privatepoker-common/test",
+    "privatepoker-common/debug",
     "stylus-sdk/debug",
 ]
 mini-alloc = ["stylus-sdk/mini-alloc"]
 
 [[bin]]
-name = "hash_to_curve"
+name = "signatory"
 path = "src/main.rs"
 
 [lib]

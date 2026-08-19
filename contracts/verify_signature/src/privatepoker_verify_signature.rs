@@ -1,55 +1,33 @@
-use alloc::vec::Vec;
+use alloc::{vec, vec::Vec};
 
-use alloy_primitives::{Address, Bytes as AlloyBytes};
-use alloy_sol_types::{sol, SolCall, SolValue};
 use bls12_381::{Bls12, G1Affine, G2Affine};
 use pairing::{group::Group, MultiMillerLoop};
-use privatepoker_common::calls::ContractCalls;
-use stylus_sdk::{abi::Bytes, prelude::*, storage::StorageAddress};
-
-sol! {
-    interface IPrivatePokerHashToCurve {
-        function toCurve(bytes digest) external returns (bytes);
-    }
-}
+use stylus_sdk::{abi::Bytes, prelude::*};
 
 #[storage]
 #[entrypoint]
-pub struct PrivatePokerVerifySignature {
-    hash_to_curve: StorageAddress,
-}
+pub struct PrivatePokerVerifySignature;
 
 #[public]
 impl PrivatePokerVerifySignature {
-    #[constructor]
-    fn constructor(&mut self, hash_to_curve: Address) -> Result<(), Vec<u8>> {
-        if hash_to_curve == Address::ZERO {
-            return Err(b"HASH_TO_CURVE_ZERO".to_vec());
-        }
-        self.hash_to_curve.set(hash_to_curve);
-        Ok(())
-    }
-
     pub fn verify_signature(
         &mut self,
-        digest: Bytes,
+        hashed_message: Bytes,
         aggregate_public_key: Bytes,
         aggregate_signature: Bytes,
     ) -> Result<bool, Vec<u8>> {
+        if hashed_message.len() != G1AFFINE_COMPRESSED_LEN {
+            return Err(vec![1]);
+        }
         if aggregate_public_key.len() != G2AFFINE_COMPRESSED_LEN {
-            return Err(b"INVALID_AGGREGATE_PUBLIC_KEY_LENGTH".to_vec());
+            return Err(vec![2]);
         }
         if aggregate_signature.len() != G1AFFINE_COMPRESSED_LEN {
-            return Err(b"INVALID_AGGREGATE_SIGNATURE_LENGTH".to_vec());
-        }
-
-        let hashed_message = call_hash_to_curve(self, digest)?;
-        if hashed_message.len() != G1AFFINE_COMPRESSED_LEN {
-            return Err(b"INVALID_HASH_TO_CURVE_LENGTH".to_vec());
+            return Err(vec![3]);
         }
 
         Ok(verify_inner(
-            &hashed_message,
+            &hashed_message.0,
             &aggregate_public_key.0,
             &aggregate_signature.0,
         ))
@@ -78,28 +56,6 @@ pub fn verify_inner(
     .final_exponentiation()
     .is_identity()
     .into()
-}
-
-fn call_hash_to_curve(
-    ctx: &mut PrivatePokerVerifySignature,
-    digest: Bytes,
-) -> Result<Vec<u8>, Vec<u8>> {
-    let hash_to_curve = ctx.hash_to_curve.get();
-    if hash_to_curve == Address::ZERO {
-        return Err(b"HASH_TO_CURVE_NOT_SET".to_vec());
-    }
-
-    let call = IPrivatePokerHashToCurve::toCurveCall {
-        digest: digest.0.into(),
-    };
-    let output = ctx.call_bytes(
-        hash_to_curve,
-        &call.abi_encode(),
-        b"HASH_TO_CURVE_CALL_FAILED",
-    )?;
-    AlloyBytes::abi_decode(&output, true)
-        .map(|bytes| bytes.to_vec())
-        .map_err(|_| b"HASH_TO_CURVE_DECODE_FAILED".to_vec())
 }
 
 pub const G1AFFINE_COMPRESSED_LEN: usize = 48;

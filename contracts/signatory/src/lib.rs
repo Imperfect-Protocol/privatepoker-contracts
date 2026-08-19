@@ -3,6 +3,6 @@
 
 extern crate alloc;
 
-pub mod privatepoker_verify_signature;
+pub mod privatepoker_signatory;
 
-pub use privatepoker_verify_signature::*;
+pub use privatepoker_signatory::*;

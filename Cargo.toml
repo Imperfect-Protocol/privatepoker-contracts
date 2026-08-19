@@ -10,6 +10,7 @@ members = [
     "contracts/hash_to_curve",
     "contracts/lobby",
     "contracts/settler",
+    "contracts/signatory",
     "contracts/spectate",
     "contracts/table",
     "contracts/test_usdc",

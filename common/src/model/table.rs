@@ -20,7 +20,6 @@ pub struct Hand {
     pub pot_size: StorageU256,
     pub pot_split: StorageVec<StorageU256>,
     pub digest: StorageBytes,
-    pub aggregate_signature: StorageBytes,
 }
 
 #[storage]
@@ -57,7 +56,6 @@ impl Hand {
         self.pot_size.erase();
         self.pot_split.erase();
         self.digest.erase();
-        self.aggregate_signature.erase();
     }
 }
 

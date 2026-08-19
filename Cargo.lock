@@ -2990,6 +2990,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "signatory"
+version = "0.1.11"
+dependencies = [
+ "alloy-primitives",
+ "alloy-sol-types",
+ "privatepoker-common",
+ "stylus-sdk",
+]
+
+[[package]]
 name = "signature"
 version = "2.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3597,10 +3607,8 @@ name = "verify_signature"
 version = "0.1.11"
 dependencies = [
  "alloy-primitives",
- "alloy-sol-types",
  "bls12_381",
  "pairing",
- "privatepoker-common",
  "stylus-sdk",
 ]
 

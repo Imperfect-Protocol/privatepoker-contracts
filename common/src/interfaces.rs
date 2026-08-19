@@ -21,15 +21,23 @@ sol! {
     }
 
     interface IPrivatePokerAggregatePubKeyFacet {
-        function setTableAggregatePublicKey(uint256 lobby_id, uint256 table_id, bytes aggregate_public_key, bytes aggregate_signature) external;
+        function setTableAggregatePublicKey(uint256 lobby_id, uint256 table_id, bytes aggregate_public_key) external;
     }
 
     interface IPrivatePokerSettlerFacet {
-        function settleHand(uint256 lobby_id, uint256 table_id, uint256 hand_id, uint256 pot_size, uint256[] pot_split, uint256[] chips_balances, bytes digest, bytes aggregate_signature) external;
+        function settleHand(uint256 lobby_id, uint256 table_id, uint256 hand_id, uint256 pot_size, uint256[] pot_split, uint256[] chips_balances, bytes digest, bytes aggregate_public_key) external;
+    }
+
+    interface IPrivatePokerSignatory {
+        function verifySignedCalldata(bytes signed_calldata) external returns (bool);
+    }
+
+    interface IPrivatePokerHashToCurve {
+        function toCurve(bytes digest) external returns (bytes);
     }
 
     interface IPrivatePokerVerifySignature {
-        function verifySignature(bytes digest, bytes aggregate_public_key, bytes aggregate_signature) external returns (bool);
+        function verifySignature(bytes hashed_message, bytes aggregate_public_key, bytes aggregate_signature) external returns (bool);
     }
 
     interface IPrivatePokerSpectateFacet {

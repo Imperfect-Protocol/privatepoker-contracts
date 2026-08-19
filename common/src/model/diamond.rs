@@ -16,7 +16,7 @@ pub struct PrivatePokerDiamond {
     pub chips: StorageAddress,
     pub settler: StorageAddress,
     pub aggregate_pub_key: StorageAddress,
-    pub verify_signature: StorageAddress,
+    pub signatory: StorageAddress,
 }
 
 impl PrivatePokerDiamond {

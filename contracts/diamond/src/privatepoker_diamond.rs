@@ -8,12 +8,14 @@ use privatepoker_common::{
     interfaces::{
         IPrivatePokerAccountFacet, IPrivatePokerAggregatePubKeyFacet, IPrivatePokerCashierFacet,
         IPrivatePokerChipsFacet, IPrivatePokerHandFacet, IPrivatePokerLobbyFacet,
-        IPrivatePokerSettlerFacet, IPrivatePokerSpectateFacet, IPrivatePokerTableFacet,
+        IPrivatePokerSettlerFacet, IPrivatePokerSignatory, IPrivatePokerSpectateFacet,
+        IPrivatePokerTableFacet,
     },
     lobby::{
         MainLobby, PrivatePokerAccountsStorage, PrivatePokerCashierStorage,
         PrivatePokerChipsStorage, PrivatePokerDiamond as DiamondStorage,
     },
+    poker::G1AFFINE_COMPRESSED_LEN,
 };
 use stylus_sdk::{prelude::*, ArbResult};
 
@@ -36,7 +38,7 @@ impl PrivatePokerDiamond {
         chips_facet: Address,
         settler_facet: Address,
         aggregate_pub_key_facet: Address,
-        verify_signature: Address,
+        signatory: Address,
         usdc: Address,
     ) -> Result<(), Vec<u8>> {
         ensure_not_zero(lobby_facet, b"LOBBY_FACET_ZERO")?;
@@ -48,7 +50,7 @@ impl PrivatePokerDiamond {
         ensure_not_zero(chips_facet, b"CHIPS_FACET_ZERO")?;
         ensure_not_zero(settler_facet, b"SETTLER_FACET_ZERO")?;
         ensure_not_zero(aggregate_pub_key_facet, b"AGGREGATE_PUB_KEY_FACET_ZERO")?;
-        ensure_not_zero(verify_signature, b"VERIFY_SIGNATURE_ZERO")?;
+        ensure_not_zero(signatory, b"SIGNATORY_ZERO")?;
         ensure_not_zero(usdc, b"USDC_ZERO")?;
 
         let diamond = self.vm().contract_address();
@@ -69,7 +71,7 @@ impl PrivatePokerDiamond {
         diamond_storage
             .aggregate_pub_key
             .set(aggregate_pub_key_facet);
-        diamond_storage.verify_signature.set(verify_signature);
+        diamond_storage.signatory.set(signatory);
 
         let mut chips = PrivatePokerChipsStorage::storage_slot();
         erc20::init_token(
@@ -132,8 +134,8 @@ impl PrivatePokerDiamond {
         DiamondStorage::storage_slot().aggregate_pub_key.get()
     }
 
-    pub fn verify_signature(&self) -> Address {
-        DiamondStorage::storage_slot().verify_signature.get()
+    pub fn signatory(&self) -> Address {
+        DiamondStorage::storage_slot().signatory.get()
     }
 
     #[payable]
@@ -146,8 +148,17 @@ impl PrivatePokerDiamond {
         let mut selector = [0u8; 4];
         selector.copy_from_slice(&calldata[0..4]);
         let facet = facet_for_selector(selector)?;
+        let delegate_calldata = if requires_signature(selector) {
+            if calldata.len() < 4 + G1AFFINE_COMPRESSED_LEN {
+                return Err(b"SIGNATURE_MISSING".to_vec());
+            }
+            verify_signed_calldata(self, calldata)?;
+            &calldata[..calldata.len() - G1AFFINE_COMPRESSED_LEN]
+        } else {
+            calldata
+        };
 
-        unsafe { self.delegate_call_raw(facet, calldata) }
+        unsafe { self.delegate_call_raw(facet, delegate_calldata) }
     }
 }
 
@@ -255,6 +266,27 @@ fn facet_kind_for_selector(selector: [u8; 4]) -> Result<FacetKind, Vec<u8>> {
             return Err(format!("FUNCTION_NOT_FOUND: 0x{}", hex::encode(selector)).into_bytes());
         }
     })
+}
+
+fn requires_signature(selector: [u8; 4]) -> bool {
+    matches!(
+        selector,
+        IPrivatePokerAggregatePubKeyFacet::setTableAggregatePublicKeyCall::SELECTOR
+            | IPrivatePokerSettlerFacet::settleHandCall::SELECTOR
+    )
+}
+
+fn verify_signed_calldata(
+    ctx: &mut PrivatePokerDiamond,
+    signed_calldata: &[u8],
+) -> Result<(), Vec<u8>> {
+    let signatory = DiamondStorage::storage_slot().signatory.get();
+    ensure_not_zero(signatory, b"SIGNATORY_NOT_SET")?;
+
+    let call = IPrivatePokerSignatory::verifySignedCalldataCall {
+        signed_calldata: signed_calldata.to_vec().into(),
+    };
+    ctx.call_bool(signatory, &call.abi_encode(), b"INVALID_SIGNATURE")
 }
 
 fn ensure_not_zero(address: Address, error: &[u8]) -> Result<(), Vec<u8>> {

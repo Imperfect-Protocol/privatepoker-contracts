@@ -1,8 +1,6 @@
 use alloc::vec::Vec;
 
-use alloy_primitives::{Bytes as AlloyBytes, Keccak256};
-use alloy_sol_types::SolValue;
-use stylus_sdk::{abi::Bytes, alloy_primitives::U256};
+use stylus_sdk::alloy_primitives::U256;
 
 pub const DIGEST_LEN: usize = 32;
 pub const G1AFFINE_COMPRESSED_LEN: usize = 48;
@@ -29,42 +27,4 @@ pub fn game_ended_winner_index(chips_balances: &[U256]) -> Option<usize> {
         winner_index = Some(index);
     }
     winner_index
-}
-
-#[inline]
-pub fn set_table_aggregate_public_key_digest(
-    lobby_id: U256,
-    table_id: U256,
-    aggregate_public_key: Bytes,
-) -> [u8; 32] {
-    let encoded = (lobby_id, table_id, aggregate_public_key).abi_encode();
-    let mut k = Keccak256::new();
-    k.update(encoded);
-    k.finalize().0
-}
-
-#[inline]
-pub fn settlement_signature_digest(
-    lobby_id: U256,
-    table_id: U256,
-    hand_id: U256,
-    pot_size: U256,
-    pot_split: &[U256],
-    chips_balances: &[U256],
-    digest: &[u8],
-) -> [u8; 32] {
-    let encoded = (
-        lobby_id,
-        table_id,
-        hand_id,
-        pot_size,
-        pot_split.to_vec(),
-        chips_balances.to_vec(),
-        AlloyBytes::copy_from_slice(digest),
-    )
-        .abi_encode();
-
-    let mut k = Keccak256::new();
-    k.update(encoded);
-    k.finalize().0
 }

@@ -1,15 +1,10 @@
 use alloc::vec::Vec;
 
 use alloy_primitives::Address;
-use alloy_sol_types::SolCall;
 use privatepoker_common::{
-    calls::ContractCalls,
-    interfaces::{HandSettled, IPrivatePokerVerifySignature},
-    lobby::{MainLobby, PrivatePokerChipsStorage, PrivatePokerDiamond},
-    poker::{
-        checked_sum, game_ended_winner_index, settlement_signature_digest, DIGEST_LEN,
-        G1AFFINE_COMPRESSED_LEN,
-    },
+    interfaces::HandSettled,
+    lobby::{MainLobby, PrivatePokerChipsStorage},
+    poker::{checked_sum, game_ended_winner_index, DIGEST_LEN, G2AFFINE_COMPRESSED_LEN},
 };
 use stylus_sdk::{abi::Bytes, alloy_primitives::U256, prelude::*, stylus_core};
 
@@ -28,7 +23,7 @@ impl PrivatePokerSettler {
         pot_split: Vec<U256>,
         chips_balances: Vec<U256>,
         digest: Bytes,
-        aggregate_signature: Bytes,
+        aggregate_public_key: Bytes,
     ) -> Result<(), Vec<u8>> {
         if hand_id == U256::ZERO {
             return Err(b"INVALID_HAND_ID")?;
@@ -36,8 +31,8 @@ impl PrivatePokerSettler {
         if digest.len() != DIGEST_LEN {
             return Err(b"INVALID_DIGEST_LENGTH")?;
         }
-        if aggregate_signature.len() != G1AFFINE_COMPRESSED_LEN {
-            return Err(b"INVALID_AGGREGATE_SIGNATURE_LENGTH")?;
+        if aggregate_public_key.len() != G2AFFINE_COMPRESSED_LEN {
+            return Err(b"INVALID_AGGREGATE_PUBLIC_KEY_LENGTH")?;
         }
 
         let sender = self.vm().msg_sender();
@@ -77,34 +72,13 @@ impl PrivatePokerSettler {
         }
         let game_ended_winner_index = game_ended_winner_index(&chips_balances);
 
-        let aggregate_public_key = table.aggregate_public_key.get_bytes().to_vec();
-        if aggregate_public_key.is_empty() {
+        let stored_aggregate_public_key = table.aggregate_public_key.get_bytes().to_vec();
+        if stored_aggregate_public_key.is_empty() {
             return Err(b"TABLE_AGGREGATE_PUBLIC_KEY_NOT_SET")?;
         }
-        let verify_signature = PrivatePokerDiamond::storage_slot().verify_signature.get();
-        if verify_signature == Address::ZERO {
-            return Err(b"VERIFY_SIGNATURE_NOT_SET")?;
+        if &aggregate_public_key.0 != stored_aggregate_public_key.as_slice() {
+            return Err(b"AGGREGATE_PUBLIC_KEY_MISMATCH")?;
         }
-
-        let signed_digest = settlement_signature_digest(
-            lobby_id,
-            table_id,
-            hand_id,
-            pot_size,
-            &pot_split,
-            &chips_balances,
-            &digest.0,
-        );
-        let verify = IPrivatePokerVerifySignature::verifySignatureCall {
-            digest: signed_digest.to_vec().into(),
-            aggregate_public_key: aggregate_public_key.clone().into(),
-            aggregate_signature: aggregate_signature.0.clone().into(),
-        };
-        self.call_bool(
-            verify_signature,
-            &verify.abi_encode(),
-            b"INVALID_AGGREGATE_SIGNATURE",
-        )?;
 
         let mut hand = table.hands.setter(hand_id);
         if !hand.digest.get_bytes().is_empty() {
@@ -119,8 +93,6 @@ impl PrivatePokerSettler {
             hand.pot_split.grow().set(amount);
         }
         hand.digest.set_bytes(digest.0.clone());
-        hand.aggregate_signature
-            .set_bytes(aggregate_signature.0.clone());
 
         for (index, balance) in chips_balances.iter().enumerate() {
             let mut player = table
@@ -179,9 +151,7 @@ impl PrivatePokerSettler {
 #[cfg(test)]
 mod tests {
     use alloy_primitives::U256;
-    use privatepoker_common::poker::{
-        checked_sum, game_ended_winner_index, settlement_signature_digest,
-    };
+    use privatepoker_common::poker::{checked_sum, game_ended_winner_index};
 
     #[test]
     fn checked_sum_rejects_overflow() {
@@ -203,41 +173,5 @@ mod tests {
             None
         );
         assert_eq!(game_ended_winner_index(&[U256::ZERO, U256::ZERO]), None);
-    }
-
-    #[test]
-    fn settlement_signature_digest_binds_settlement_arguments() {
-        let digest = [7u8; 32];
-        let base = settlement_signature_digest(
-            U256::from(1),
-            U256::from(2),
-            U256::from(3),
-            U256::from(30),
-            &[U256::from(10), U256::from(20)],
-            &[U256::from(990), U256::from(1010)],
-            &digest,
-        );
-
-        let changed_split = settlement_signature_digest(
-            U256::from(1),
-            U256::from(2),
-            U256::from(3),
-            U256::from(30),
-            &[U256::from(0), U256::from(30)],
-            &[U256::from(990), U256::from(1010)],
-            &digest,
-        );
-        assert_ne!(base, changed_split);
-
-        let changed_balance = settlement_signature_digest(
-            U256::from(1),
-            U256::from(2),
-            U256::from(3),
-            U256::from(30),
-            &[U256::from(10), U256::from(20)],
-            &[U256::from(1000), U256::from(1000)],
-            &digest,
-        );
-        assert_ne!(base, changed_balance);
     }
 }
