@@ -1,4 +1,4 @@
-use alloc::{vec, vec::Vec};
+use alloc::{string::String, vec, vec::Vec};
 
 use alloy_primitives::Address;
 use alloy_sol_types::{sol, SolCall, SolValue};
@@ -120,6 +120,7 @@ impl PrivatePokerAccount {
         &mut self,
         player_address: Address,
         operator: Address,
+        display_name: String,
         annonce_public_key: Bytes,
         encrypted_profile: Bytes,
         subscription_tier: u8,
@@ -144,6 +145,7 @@ impl PrivatePokerAccount {
         accounts.write_account(
             player_address,
             operator,
+            display_name,
             annonce_public_key.as_ref(),
             encrypted_profile.as_ref(),
             subscription_tier,
@@ -176,6 +178,7 @@ impl PrivatePokerAccount {
     pub fn update_account(
         &mut self,
         player_address: Address,
+        display_name: String,
         annonce_public_key: Bytes,
         encrypted_profile: Bytes,
     ) -> Result<(), Vec<u8>> {
@@ -193,6 +196,7 @@ impl PrivatePokerAccount {
 
         accounts.update_account_profile(
             player_address,
+            display_name,
             annonce_public_key.as_ref(),
             encrypted_profile.as_ref(),
         )?;
@@ -207,7 +211,12 @@ impl PrivatePokerAccount {
         Ok(())
     }
 
-    pub fn create_account(&mut self, player_address: Address) -> Result<(), Vec<u8>> {
+    pub fn create_account(
+        &mut self,
+        player_address: Address,
+        display_name: String,
+        encrypted_profile: Bytes,
+    ) -> Result<(), Vec<u8>> {
         if player_address == Address::ZERO {
             return Err(b"PLAYER_ZERO".to_vec());
         }
@@ -216,8 +225,12 @@ impl PrivatePokerAccount {
             return Err(b"NOT_PLAYER_OR_OWNER".to_vec());
         }
 
-        PrivatePokerAccountsStorage::storage_slot()
-            .create_account(player_address, U256::from(self.vm().block_timestamp()))?;
+        PrivatePokerAccountsStorage::storage_slot().create_account(
+            player_address,
+            display_name,
+            encrypted_profile.as_ref(),
+            U256::from(self.vm().block_timestamp()),
+        )?;
         stylus_core::log(
             self.vm(),
             AccountStatusChanged {
@@ -273,6 +286,7 @@ impl PrivatePokerAccount {
             operator: account.operator.get(),
             flags: account.flags.get(),
             status_changed_at: account.status_changed_at.get(),
+            display_name: account.display_name.get_string(),
             annonce_public_key: account.annonce_public_key.get_bytes().into(),
             encrypted_profile: account.encrypted_profile.get_bytes().into(),
             subscription_tier: account.subscription_tier.get().to::<u8>(),

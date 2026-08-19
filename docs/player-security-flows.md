@@ -56,7 +56,7 @@ flowchart LR
 
 ### 3.2 Methods
 
-- `createAccount(address player_address)`
+- `createAccount(address player_address, string display_name, bytes encrypted_profile)`
 - `getAccountStatus(address player_address)`
 - `accountStatusChangedAt(address player_address)`
 - `getAccount(address player_address)`
@@ -70,7 +70,7 @@ Creating an account sets `flags = Unverified`. The player cannot subscribe until
 
 ```mermaid
 flowchart TD
-    A["Player calls createAccount(player)"] --> B{"msg.sender == player?"}
+    A["Player calls createAccount(player, profile)"] --> B{"msg.sender == player?"}
     B -- "no" --> C{"msg.sender == Accounts.owner?"}
     C -- "no" --> X["Err NOT_PLAYER_OR_OWNER"]
     B -- "yes" --> D["Create unverified account"]
@@ -110,7 +110,7 @@ flowchart LR
 
 ### 4.2 Methods
 
-- `subscribe(address player_address, address operator, bytes annonce_public_key, bytes encrypted_profile, uint8 subscription_tier)`
+- `subscribe(address player_address, address operator, string display_name, bytes annonce_public_key, bytes encrypted_profile, uint8 subscription_tier)`
 
 Although this call modifies the player's account, the current authorization expects the caller to be the proposed operator or the accounts owner. The operation is the only contract flow that associates an operator with a player.
 

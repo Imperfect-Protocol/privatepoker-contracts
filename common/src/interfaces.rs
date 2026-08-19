@@ -51,9 +51,9 @@ sol! {
     }
 
     interface IPrivatePokerAccountFacet {
-        function subscribe(address player_address, address operator, bytes annonce_public_key, bytes encrypted_profile, uint8 subscription_tier) external;
-        function updateAccount(address player_address, bytes annonce_public_key, bytes encrypted_profile) external;
-        function createAccount(address player_address) external;
+        function subscribe(address player_address, address operator, string display_name, bytes annonce_public_key, bytes encrypted_profile, uint8 subscription_tier) external;
+        function updateAccount(address player_address, string display_name, bytes annonce_public_key, bytes encrypted_profile) external;
+        function createAccount(address player_address, string display_name, bytes encrypted_profile) external;
         function setAccountStatus(address player_address, uint256 flags) external;
         function getAccountStatus(address player_address) external view returns (uint256);
         function accountStatusChangedAt(address player_address) external view returns (uint256);
@@ -141,6 +141,7 @@ sol! {
         address operator;
         uint256 flags;
         uint256 status_changed_at;
+        string display_name;
         bytes annonce_public_key;
         bytes encrypted_profile;
         uint8 subscription_tier;

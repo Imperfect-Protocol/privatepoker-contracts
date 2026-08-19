@@ -158,7 +158,7 @@ flowchart LR
 
 ### 5.2 Methods
 
-- `createAccount(address player_address)`
+- `createAccount(address player_address, string display_name, bytes encrypted_profile)`
 - `setAccountStatus(address player_address, uint256 flags)`
 - `setTokens(address usdc, address chips, address cashier)`
 - read methods: `getAccountStatus`, `accountStatusChangedAt`, `getAccount`, `accountCount`, `accountAt`

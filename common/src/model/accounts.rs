@@ -1,11 +1,11 @@
-use alloc::{vec, vec::Vec};
+use alloc::{string::String, vec, vec::Vec};
 
 use alloy_primitives::Address;
 use alloy_primitives::U8;
 use stylus_sdk::{
     alloy_primitives::U256,
     prelude::*,
-    storage::{StorageAddress, StorageBytes, StorageMap, StorageU256, StorageU8, StorageVec},
+    storage::{StorageAddress, StorageBytes, StorageMap, StorageString, StorageU256, StorageU8, StorageVec},
 };
 
 use super::slots::PRIVATE_POKER_ACCOUNTS_SLOT;
@@ -23,6 +23,7 @@ pub struct PlayerAccount {
     pub status_changed_at: StorageU256,
     pub player_address: StorageAddress,
     pub operator: StorageAddress,
+    pub display_name: StorageString,
     pub annonce_public_key: StorageBytes,
     pub encrypted_profile: StorageBytes,
     pub subscription_tier: StorageU8,
@@ -67,7 +68,13 @@ impl PrivatePokerAccountsStorage {
     }
 
     #[inline]
-    pub fn create_account(&mut self, player_address: Address, now: U256) -> Result<(), Vec<u8>> {
+    pub fn create_account(
+        &mut self,
+        player_address: Address,
+        display_name: String,
+        encrypted_profile: &[u8],
+        now: U256,
+    ) -> Result<(), Vec<u8>> {
         let mut account = self.accounts.setter(player_address);
         if account.flags.get() != U256::ZERO {
             return Err(b"ACCOUNT_EXISTS".to_vec());
@@ -76,6 +83,8 @@ impl PrivatePokerAccountsStorage {
         account.flags.set(ACCOUNT_STATUS_UNVERIFIED);
         account.status_changed_at.set(now);
         account.player_address.set(player_address);
+        account.display_name.set_str(display_name);
+        account.encrypted_profile.set_bytes(encrypted_profile);
         self.players.push(player_address);
         Ok(())
     }
@@ -123,6 +132,7 @@ impl PrivatePokerAccountsStorage {
         &mut self,
         player_address: Address,
         operator: Address,
+        display_name: String,
         annonce_public_key: &[u8],
         encrypted_profile: &[u8],
         subscription_tier: u8,
@@ -143,6 +153,7 @@ impl PrivatePokerAccountsStorage {
         }
 
         account.operator.set(operator);
+        account.display_name.set_str(display_name);
         account.annonce_public_key.set_bytes(annonce_public_key);
         account.encrypted_profile.set_bytes(encrypted_profile);
         account.subscription_tier.set(U8::from(subscription_tier));
@@ -156,6 +167,7 @@ impl PrivatePokerAccountsStorage {
     pub fn update_account_profile(
         &mut self,
         player_address: Address,
+        display_name: String,
         annonce_public_key: &[u8],
         encrypted_profile: &[u8],
     ) -> Result<Address, Vec<u8>> {
@@ -164,6 +176,7 @@ impl PrivatePokerAccountsStorage {
             return Err(b"ACCOUNT_MISSING".to_vec());
         }
         let operator = account.operator.get();
+        account.display_name.set_str(display_name);
         account.annonce_public_key.set_bytes(annonce_public_key);
         account.encrypted_profile.set_bytes(encrypted_profile);
         Ok(operator)

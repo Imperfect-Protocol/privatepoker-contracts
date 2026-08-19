@@ -56,7 +56,7 @@ flowchart LR
 
 ### 3.2 Methods
 
-- `subscribe(address player_address, address operator, bytes annonce_public_key, bytes encrypted_profile, uint8 subscription_tier)`
+- `subscribe(address player_address, address operator, string display_name, bytes annonce_public_key, bytes encrypted_profile, uint8 subscription_tier)`
 
 The operator is associated by `subscribe`. No other flow should write this association.
 
