@@ -15,7 +15,8 @@ This workspace contains the Private Poker diamond, lobby/table/hand/spectate fac
 Before running deployment scripts, load your private environment file:
 
 ```sh
-. ~/some-hidden-location/privatepoker-devenv.sh
+# Recommended use hidden location like this instead of .env that could be accidentally committed to repo.
+. ~/.private-poker-dev/devenv.sh
 ```
 
 That file should export:
