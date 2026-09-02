@@ -25,7 +25,7 @@ export PP_HOME=/path/to/private/env/storage
 export PP_ENV=nitro-devnode
 export PP_PRIVATE_KEY=0x...
 export PP_OWNER=0x...
-export RPC_URL=http://localhost:8547
+export RPC_URL=http://url/of/arbitrum/rpc
 ```
 
 For the local **Nitro DevNode** test deploy, the current development key is:
@@ -34,6 +34,8 @@ For the local **Nitro DevNode** test deploy, the current development key is:
 # This is well known NitroDevNode private key
 export PP_PRIVATE_KEY=0xb6b15c8cb491557369f3c7d2c287b053eb229daa9c22138887752191c9520659 
 export PP_OWNER=$(cast wallet address "$PP_PRIVATE_KEY")
+
+# This is local NitroDevNode RPC URL
 export RPC_URL=http://localhost:8547
 ```
 
@@ -148,6 +150,7 @@ Mint TEST_USDC to all standard Anvil accounts:
 Mint TEST_USDC to one address:
 
 ```sh
+# This is well known tests account used by NitroDevNode (and also Anvil)
 ./scripts/fund-test-usdc.sh 100000 0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266
 PP_PRIVATE_KEY=0x ./scripts/deposit-test-usdc.sh 50000
 ```
@@ -155,6 +158,7 @@ PP_PRIVATE_KEY=0x ./scripts/deposit-test-usdc.sh 50000
 If the Nitro DevNode accounts do not already have ETH, fund the first three player accounts from the funded dev owner key:
 
 ```sh
+# These are well known tests accounts used by NitroDevNode (and also Anvil)
 cast send --private-key "$PP_PRIVATE_KEY" --rpc-url "$RPC_URL" --value 1ether 0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266
 cast send --private-key "$PP_PRIVATE_KEY" --rpc-url "$RPC_URL" --value 1ether 0x70997970C51812dc3A010C7d01b50e0d17dc79C8
 cast send --private-key "$PP_PRIVATE_KEY" --rpc-url "$RPC_URL" --value 1ether 0x3C44CdDdB6a900fa2b585dd299e03d12FA4293BC
