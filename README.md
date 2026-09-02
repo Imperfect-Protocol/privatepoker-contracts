@@ -22,7 +22,7 @@ export PP_OWNER=0x...
 export RPC_URL=http://localhost:8547
 ```
 
-For the local Nitro DevNode test deploy, the current development key is:
+For the local **Nitro DevNode** test deploy, the current development key is:
 
 ```sh
 export PP_PRIVATE_KEY=0xb6b15c8cb491557369f3c7d2c287b053eb229daa9c22138887752191c9520659
@@ -167,8 +167,3 @@ PP_FORCE_PRIVATEPOKER_DEPLOY=1 ./scripts/deploy-privatepoker.sh
 ./scripts/fund-test-usdc-to-test-accounts.sh 100000
 ```
 
-Then run the three `crum_p2p_bot` terminals documented in:
-
-```sh
-/crumble/apps/crum_p2p_bot/README.md
-```
