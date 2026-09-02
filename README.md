@@ -170,7 +170,7 @@ cast send --private-key "$PP_PRIVATE_KEY" --rpc-url "$RPC_URL" --value 1ether 0x
 ```sh
 cd /privatepoker-contracts
 
-. ~/some-hidden-location/privatepoker-devenv.sh
+. ~/.private-poker-dev/devenv.sh
 
 ./scripts/check-all-contracts.sh
 PP_FORCE_TEST_USDC_DEPLOY=1 ./scripts/deploy-privatepoker-test-usdc.sh
