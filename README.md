@@ -1,8 +1,14 @@
-# privatepoker-contracts
+# Private Poker Smart Contracts ♠️
 
 Arbitrum Stylus contracts for Private Poker.
 
 This workspace contains the Private Poker diamond, lobby/table/hand/spectate facets, chips/cashier/test USDC contracts, and shuffle/unmasking verification contracts.
+
+**Author:** [Sonia Code](https://github.com/sadhbh-c0d3)
+
+*Copyright (c) 2026 Sonia Kolasinska / Imperfect Protocol. All Rights Reserved.*
+
+---
 
 ## Required Environment
 
